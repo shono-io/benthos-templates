@@ -1,0 +1,112 @@
+name: clickker_output
+type: output
+status: beta
+
+fields:
+  - name: base_url
+    type: string
+    description: the clickker url
+  - name: token
+    type: string
+    description: the clickker token
+  - name: key_field
+    type: string
+    description: the name of the external key field to extract the object identifier from
+  - name: kind
+    type: string
+    description: the kind of object to update
+
+mapping: |-
+  root.broker.outputs = []
+  root.broker.outputs."-" = this.apply("map_switch") 
+
+  map map_switch {
+    root.switch.cases = [
+      this.apply("map_switch_create"),
+      this.apply("map_switch_update"),
+    ]
+    root.processors = [
+      this.apply("map_get_branch")
+    ]
+  }
+  
+  map map_switch_create {
+    root.check = "meta(\"is_new\") == \"true\""
+    root.output.http_client.url = "%s/%s".format(this.base_url, this.kind)
+    root.output.http_client.verb = "POST"
+    root.output.http_client.headers."X-ApiKey" = this.token
+    root.output.http_client.headers."Content-Type" = "application/json"
+    root.output.processors = [ {"log": {"level": "INFO", "message": "creating Account ${!this.ID}"}} ]
+  }
+  
+  map map_switch_update {
+    root.output.http_client.url = "%s/%s".format(this.base_url, this.kind)
+    root.output.http_client.verb = "PUT"
+    root.output.http_client.headers."X-ApiKey" = this.token
+    root.output.http_client.headers."Content-Type" = "application/json"
+    root.output.processors = [ {"log": {"level": "INFO", "message": "updating Account ${!this.ID}"}} ]
+  }
+  
+  map map_get_branch {
+    root.branch.processors = [ this.apply("map_get") ]
+    root.branch.result_map = """meta is_new = meta("http_status_code") == "404"
+  root = root"""
+  }
+  
+  map map_get {
+      root.http.url = "%s/%s/${!%s}".format(this.base_url, this.kind, this.key_field)
+      root.http.verb = "GET"
+      root.http.headers."X-ApiKey" = this.token
+      root.http.headers."Content-Type" = "application/json"
+      root.http.successful_on = [200, 404]
+  }
+
+tests:
+  - name: Basic
+    config:
+      base_url: "http://localhost/api"
+      token: "1234"
+      key_field: "this.ID"
+      kind: "Account"
+    expected:
+      broker:
+        outputs:
+          - switch:
+              cases:
+                - check: meta("is_new") == "true"
+                  output:
+                    http_client:
+                      url: http://localhost/api/Account
+                      verb: POST
+                      headers:
+                        X-ApiKey: "1234"
+                        Content-Type: "application/json"
+                    processors:
+                      - log:
+                          level: INFO
+                          message: "creating Account ${!this.ID}"
+                - output:
+                    http_client:
+                      url: http://localhost/api/Account
+                      verb: PUT
+                      headers:
+                        X-ApiKey: "1234"
+                        Content-Type: "application/json"
+                    processors:
+                      - log:
+                          level: INFO
+                          message: "updating Account ${!this.ID}"
+
+            processors:
+              - branch:
+                  processors:
+                    - http:
+                        url: http://localhost/api/Account/${!this.ID}
+                        verb: GET
+                        successful_on: [ 200, 404 ]
+                        headers:
+                          X-ApiKey: "1234"
+                          Content-Type: "application/json"
+                  result_map: |-
+                    meta is_new = meta("http_status_code") == "404"
+                    root = root

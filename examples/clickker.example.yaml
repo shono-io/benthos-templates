@@ -1,0 +1,19 @@
+input:
+  generate:
+    count: 1
+    mapping: |-
+      #root.ID = "6130c1ad-0394-46cc-b6ac-31883639f69c"
+      #root.AccountName = "Tessa test                                        "
+      root.ID = "6130c1ad-0394-46cc-b6ac-318836300000"
+      root.AccountName = "Daan tester3"
+      root.CustomerType = "C"
+      root.CustomerStatus = "A"
+      
+      root.InvoiceCity = "Bolderberg"
+
+output:
+  clickker_output:
+    base_url:  ${CLICKKER_BASE_URL}
+    token: ${CLICKKER_API_KEY}
+    key_field: this.ID
+    kind: Account
