@@ -1,0 +1,31 @@
+# Make sure redis is started locally on port 6379
+
+input:
+  generate:
+    count: 1
+    mapping: |-
+      root.to.concept = "user_role"
+      root.to.key = "owner"
+      root.from.concept = "person"
+      root.from.key = "1"
+      root.as = "role"
+
+pipeline:
+  processors:
+    - try:
+        - register_link:
+            redis: "redis://localhost:6379/8"
+
+        - mapping: |-
+            # clean root to make sure we are actually looking up
+            root.concept = "user_role"
+            root.key = "owner"
+
+        - lookup_links:
+            redis: "redis://localhost:6379/8"
+            concept_field: "concept"
+            key_field: "key"
+            result_map: root.resolved = this
+
+output:
+  stdout: {}

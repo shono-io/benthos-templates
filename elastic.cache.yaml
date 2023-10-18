@@ -1,0 +1,60 @@
+name: elastic_cache
+type: cache
+status: beta
+
+fields:
+  - name: index
+    type: string
+    description: the index to use for the cache
+  - name: debug
+    type: bool
+    default: false
+    description: whether to enable debug logging
+
+mapping: |-
+  #!blobl
+  map with_elastic {
+    root.elasticsearch = if env("ELASTIC_CLOUD_ID") != "" && env("ELASTIC_CLOUD_ID") != null {
+      {
+        "index": this.index,
+        "cloud_id": env("ELASTIC_CLOUD_ID"),
+        "api_key": env("ELASTIC_API_KEY")
+      }
+    } else {
+      {
+        "index": this.index,
+        "password" : env("ELASTIC_PASSWORD"),
+        "username" : env("ELASTIC_USERNAME"),
+        "addresses" : [env("ELASTIC_ENDPOINT")]
+      }
+    }
+  }
+  
+  map with_debug {
+    root.file.directory = "./data/" + this.index
+  }
+  
+  root = if this.debug {
+    this.apply("with_debug")
+  } else {
+    this.apply("with_elastic")
+  }
+
+tests:
+  - name: Test With ElasticSearch
+    config:
+      index: "my_index"
+    expected:
+      elasticsearch:
+        addresses: []
+        index: "my_index"
+        username:
+        password:
+
+  - name: Test With Debug
+    config:
+      index: "my_index"
+      debug: true
+    expected:
+      file:
+        directory: "./data/my_index"

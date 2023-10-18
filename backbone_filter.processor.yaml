@@ -1,0 +1,28 @@
+name: backbone_filter
+type: processor
+status: beta
+
+fields:
+  - name: events
+    kind: list
+    type: string
+    description: the events to listen for in the format <scope>:<concept>:<event>
+
+mapping: |-
+  root.mapping = """
+  let events = %s
+  let evt = "%%s:%%s:%%s".format(meta("io.shono.scope"), meta("io.shono.concept"), meta("io.shono.event"))
+  root = if $events.contains($evt) { this } else { deleted() }""".format(this.events.format_json(no_indent: true))
+
+tests:
+  - name: Test With Kafka
+    config:
+      events:
+        - hr:people:created
+        - hr:people:updated
+        - iam:user:authenticated
+    expected:
+      mapping: |-
+        let events = ["hr:people:created","hr:people:updated","iam:user:authenticated"]
+        let evt = "%s:%s:%s".format(meta("io.shono.scope"), meta("io.shono.concept"), meta("io.shono.event"))
+        root = if $events.contains($evt) { this } else { deleted() }

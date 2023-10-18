@@ -1,0 +1,42 @@
+# Make sure redis is started locally on port 6379
+
+input:
+  generate:
+    count: 1
+    mapping: |-
+      root.links = [
+        {"from": {"concept": "person", "key": "1"}, "to": {"concept": "user_role", "key": "owner"}, "as": "role"},
+        {"from": {"concept": "person", "key": "2"}, "to": {"concept": "user_role", "key": "owner"}, "as": "role"}
+      ]
+  processors:
+    # register a few links
+    - branch:
+        request_map: |-
+          root.from.concept = "person"
+          root.from.key = "1"
+          root.to.concept = "user_role"
+          root.to.key = "owner"
+          root.as = "role"
+        processors:
+          - register_link:
+              redis: "redis://localhost:6379/8"
+    - branch:
+        request_map: |-
+          root.from.concept = "person"
+          root.from.key = "2"
+          root.to.concept = "user_role"
+          root.to.key = "owner"
+          root.as = "role"
+        processors:
+          - register_link:
+              redis: "redis://localhost:6379/8"
+
+
+pipeline:
+  processors:
+    - try:
+        - lookup_link_values:
+            redis: "redis://localhost:6379/8"
+
+output:
+  stdout: {}

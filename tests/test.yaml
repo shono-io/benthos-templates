@@ -1,0 +1,97 @@
+input:
+  generate:
+    count: 1
+    mapping: |-
+      root.cache = "system_cache"
+      root.cache_key = "salesforce_api_token"
+      root.base_url = "${SALESFORCE_BASE_URL}"
+      root.username = "${SALESFORCE_USERNAME}"
+      root.password = "${SALESFORCE_PASSWORD}"
+      root.client_id = "${SALESFORCE_CLIENT_KEY}"
+      root.client_secret = "${SALESFORCE_CLIENT_SECRET}"
+pipeline:
+  processors:
+    - branch:
+        processors:
+          # First try to retrieve the token from the cache
+          - branch:
+              processors:
+                - try:
+                    # get the token from the token cache
+                    - cache:
+                        resource: system_cache
+                        operator: get
+                        key: salesforce_api_token
+
+                    # check if the token is outdated
+                    - mapping: |-
+                        let expiration = (2 * 60 * 60 * 1000) - (5 * 60 * 1000) # 2 hours - 5 minutes
+                        
+                        root = if (now().ts_unix_milli() - this.issued_at.uint64() > $expiration) {
+                          throw("token expired")
+                        }
+                    - mapping: root.resolved_token = this
+
+                    - log:
+                        level: "DEBUG"
+                        message: "Valid token retrieved from cache"
+                - catch:
+                    - mapping: root.resolved_token = null
+
+              result_map: |-
+                root.resolved_token = this.resolved_token.or(deleted())
+
+          # Only if the token could not have resolved, we will look for a new token
+          - branch:
+              request_map: |-
+                root = if this.exists("resolved_token") {
+                  deleted()
+                } else { this }
+              processors:
+                - log:
+                    level: "DEBUG"
+                    message: "Token NOT found or expired, getting a new one"
+
+                - mapping: |-
+                    meta base_url = this.base_url
+                    
+                    root.grant_type = "password"
+                    root.client_id = this.client_id
+                    root.client_secret = this.client_secret
+                    root.username = this.username
+                    root.password = this.password
+
+                    root = root.key_values().map_each(kv -> "%s=%s".format(kv.key, kv.value)).join("&")
+
+                - try:
+                    - http:
+                        url: ${!@base_url}/services/oauth2/token
+                        verb: POST
+                        headers:
+                          Content-Type: "application/x-www-form-urlencoded"
+
+                    - log:
+                        level: "DEBUG"
+                        message: "Token retrieved, caching it"
+
+                    - branch:
+                        processors:
+                          - cache:
+                              resource: system_cache
+                              operator: set
+                              key: salesforce_api_token
+                              value: ${! this }
+
+              result_map: |-
+                root.resolved_token = this
+
+        result_map: |-
+          root = this.resolved_token.access_token
+
+output:
+  stdout: {}
+
+cache_resources:
+  - label: system_cache
+    redis:
+      url: ${TEST_REDIS_URL}

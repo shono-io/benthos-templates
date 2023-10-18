@@ -1,0 +1,36 @@
+input:
+  generate:
+    count: 1
+    mapping: |-
+      meta "io.shono.scope" = "licata"
+      meta "io.shono.concept" = "classification"
+      meta "io.shono.event" = "updated"
+      
+      root.message = "hello world"
+
+pipeline:
+  processors:
+    - salesforce_api_token:
+        cache: system_cache
+        cache_key: salesforce_api_token
+        base_url: ${SALESFORCE_BASE_URL}
+        username: ${SALESFORCE_USERNAME}
+        password: ${SALESFORCE_PASSWORD}
+        client_id: ${SALESFORCE_CLIENT_KEY}
+        client_secret: ${SALESFORCE_CLIENT_SECRET}
+
+output:
+  switch:
+    cases:
+      - check: errored()
+        output:
+          stdout: {}
+          processors:
+            - mapping: root = error()
+      - output:
+          stdout: {}
+
+cache_resources:
+    - label: system_cache
+      redis:
+        url: "${TEST_REDIS_URL}"

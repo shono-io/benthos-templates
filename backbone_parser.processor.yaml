@@ -1,0 +1,24 @@
+name: backbone_parser
+type: processor
+status: beta
+
+fields: []
+
+mapping: |-
+  root.mapping = """
+  meta "io.shono.key" = @kafka_key
+  meta timestamp = @kafka_timestamp_unix
+  meta offset = @kafka_offset
+  meta partition = @kafka_partition
+  meta = @.filter(kv -> !kv.key.has_prefix("kafka_"))"""
+
+tests:
+  - name: Test With Kafka
+    config: {}
+    expected:
+      mapping: |-
+        meta "io.shono.key" = @kafka_key
+        meta timestamp = @kafka_timestamp_unix
+        meta offset = @kafka_offset
+        meta partition = @kafka_partition
+        meta = @.filter(kv -> !kv.key.has_prefix("kafka_"))

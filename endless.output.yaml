@@ -1,0 +1,39 @@
+name: endless_output
+type: output
+status: beta
+
+fields:
+  - name: output
+    type: unknown
+    description: the output to write non-errored messages to
+
+mapping: |-
+  map reject {
+    root.reject = "Unable to process message: ${! error() }"
+    root.processors = []
+    root.processors."-".log.level = "ERROR"
+    root.processors.0.log.message = "Rejecting message; unable to process message: ${! error() }"
+  }
+  
+  root.switch.cases = []
+  root.switch.cases."-".check = "errored()"
+  root.switch.cases.0.output = this.apply("reject")
+  root.switch.cases."-".output = this.output 
+
+tests:
+  - name: Should generate output
+    config:
+      output:
+        stdout: {}
+    expected:
+      switch:
+        cases:
+          - check: errored()
+            output:
+              reject: "Unable to process message: ${! error() }"
+              processors:
+                - log:
+                    level: ERROR
+                    message: "Rejecting message; unable to process message: ${! error() }"
+          - output:
+              stdout: {}

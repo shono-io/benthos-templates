@@ -1,0 +1,33 @@
+# Make sure redis is started locally on port 6379
+
+input:
+  generate:
+    count: 1
+    mapping: |-
+      root.concept.id = "user_role"
+      root.key = "owner"
+      root.data.id = "owner"
+      root.data.name = "Owner"
+
+pipeline:
+  processors:
+    - try:
+        - register_lookup_value:
+            redis: "redis://localhost:6379/8"
+
+        - mapping: |-
+            # forcing a mapping to clear the root
+            root.concept = "user_role"
+            root.key = "unknown"
+
+        - lookup_cache_value:
+            cache: redis
+            result_map: root.value = this
+
+output:
+  stdout: {}
+
+cache_resources:
+  - label: redis
+    redis:
+      url: ${REDIS_URL}

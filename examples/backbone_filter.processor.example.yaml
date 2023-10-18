@@ -1,0 +1,18 @@
+input:
+  generate:
+    count: 1
+    mapping: |-
+      meta "io.shono.scope" = "licata"
+      meta "io.shono.concept" = "classification"
+      meta "io.shono.event" = "updated"
+      
+      root.message = "hello world"
+
+pipeline:
+  processors:
+    - backbone_filter:
+        events:
+          - licata:classification:updated
+
+output:
+  stdout: {}

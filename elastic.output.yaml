@@ -1,0 +1,107 @@
+name: elastic_output
+type: output
+status: beta
+
+fields:
+  - name: index
+    type: string
+    description: the index to write to
+  - name: key
+    type: string
+    description: the key to use for the document
+  - name: debug
+    type: bool
+    default: false
+    description: whether to enable debug logging
+
+mapping: |-
+  map elastic {
+    root.elasticsearch.urls = [ env("ELASTIC_ENDPOINT") ]
+    root.elasticsearch.basic_auth = {
+      "enabled": true,
+      "username": env("ELASTIC_USERNAME"),
+      "password": env("ELASTIC_PASSWORD")
+    }
+    
+    root.elasticsearch.tls.enabled = true
+    root.elasticsearch.index = this.index
+    root.elasticsearch.id = this.key
+    root.elasticsearch.action = upsert
+  }
+  
+  map dlq {
+    root.kafka_franz.seed_brokers = [ env("BACKBONE_KAFKA_URL") ]
+    root.kafka_franz.sasl = [
+      {
+        "mechanism": "PLAIN",
+        "username": env("BACKBONE_KAFKA_USERNAME"),
+        "password": env("BACKBONE_KAFKA_PASSWORD")
+      }
+    ]
+    root.kafka_franz.tls.enabled = true
+    root.kafka_franz.topic = this.scope + ".dlq"
+  }
+  
+  map debug {
+    root.stdout.codec = "lines"
+  }
+  
+  root = if this.debug {
+    this.apply("debug")
+  } else {
+    {
+      "switch": {
+        "retry_until_success": true,
+        "cases": [
+          {
+            "check": "errored()",
+            "output": this.apply("dlq")
+          },
+          {
+            "output": this.apply("elastic")
+          }
+        ]
+      }
+    }
+  }
+
+tests:
+  - name: Test With Kafka
+    config:
+      scope: govuk
+      app: companies_injector
+    expected:
+      switch:
+        retry_until_success: true
+        cases:
+          - check: "errored()"
+            output:
+              kafka_franz:
+                seed_brokers:
+                  -
+                sasl:
+                  - mechanism: PLAIN
+                    username:
+                    password:
+                tls:
+                  enabled: true
+                topic: govuk.dlq
+          - output:
+              kafka_franz:
+                seed_brokers:
+                  -
+                sasl:
+                  - mechanism: PLAIN
+                    username:
+                    password:
+                tls:
+                  enabled: true
+                topic: govuk
+
+  - name: Test With Debug
+    config:
+      scope: govuk
+      debug: true
+    expected:
+      stdout:
+        codec: lines

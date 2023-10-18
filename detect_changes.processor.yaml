@@ -1,0 +1,80 @@
+name: detect_changes
+type: processor
+status: beta
+summary: |-
+    Detect the changes between two object fields. The result is written to a new field and the original two object
+    fields are removed from the event.
+
+fields:
+  - name: before
+    type: string
+    default: before
+    description: the path to the field holding the value before the change
+  - name: after
+    type: string
+    default: after
+    description: the path to the field holding the value after the change
+  - name: result_map
+    type: string
+    default: root = this
+    description: the mapping to execute once the changes have been detected
+
+mapping: |-
+  map detection_mapping {
+    root.mapping = """
+    map map_field {
+      root = if this.before == this.after {
+        deleted()
+      } else {
+        { this.field: this.after }
+      }
+    }
+  
+    let keys = this.get(%[1]q).or({}).keys().concat(this.get(%[2]q).or({}).keys()).unique()
+  
+    let fields = $keys.map_each(k -> {
+      "field": k,
+      "before": this.get(%[1]q).or({}).get(k),
+      "after": this.get(%[2]q).or({}).get(k)
+    })
+  
+    root = $fields.map_each(field -> field.apply("map_field")).squash()""".format(this.before, this.after, this.resultField)
+  }
+  
+  map detect_changes {
+    root.branch.processors = [
+      this.apply("detection_mapping")
+    ]
+    root.branch.result_map = this.result_map
+  }
+  
+  root = this.apply("detect_changes")
+
+tests:
+  - name: Basic
+    config:
+      before: "data.pre"
+      after: "data.post"
+      result_map: root = this
+    expected:
+      branch:
+        processors:
+          - mapping: |-
+              map map_field {
+                root = if this.before == this.after {
+                  deleted()
+                } else {
+                  { this.field: this.after }
+                }
+              }
+      
+              let keys = this.get("data.pre").or({}).keys().concat(this.get("data.post").or({}).keys()).unique()
+              
+              let fields = $keys.map_each(k -> {
+                "field": k,
+                "before": this.get("data.pre").or({}).get(k),
+                "after": this.get("data.post").or({}).get(k)
+              })
+              
+              root = $fields.map_each(field -> field.apply("map_field")).squash()
+        result_map: root = this

@@ -1,0 +1,27 @@
+# Example input:
+#   - create
+#       request: {"before": null, "after": {"id": "1", "name": "John Doe"}}
+#       returns: {"id":"1","name":"John Doe"}
+#   - update
+#       request: {"before": {"id": "1", "name": "John Doe"}, "after": {"id": "1", "name": "Daan Gerits"}}
+#       returns: {"name":"Daan Gerits"}
+#   - delete
+#       request: {"before": {"id": "1", "name": "John Doe"}, "after": null}
+#       returns: {"id":null,"name":null}
+
+input:
+  stdin: {}
+  processors:
+    - mapping: |-
+        root = if !this.exists("before") || !this.exists("after") {
+          throw("invalid request")
+        } else {
+          this
+        }
+
+pipeline:
+  processors:
+    - detect_changes: {}
+
+output:
+  stdout: {}

@@ -1,0 +1,104 @@
+name: dlq_aware
+type: output
+status: beta
+
+fields:
+  - name: app
+    type: string
+    description: the identifier of the app processing the event
+  - name: key
+    type: string
+    default: "meta(\"io.shono.key\")"
+    description: the dot path to the field to use as the document id
+  - name: output
+    type: unknown
+    description: the output to use for the main event
+  - name: url
+    type: string
+    default: ""
+    description: the kafka url to use
+  - name: username
+    type: string
+    default: ""
+    description: the username to use for authentication
+  - name: password
+    type: string
+    default: ""
+    description: the password to use for authentication
+  - name: headers
+    type: string
+    description: the inclusion pattern to use for metadata
+    default: ".*"
+
+
+mapping: |-
+  map dlq {
+    root.kafka_franz.seed_brokers = if this.url == "" { env("BACKBONE_KAFKA_URL").split(",") } else { [this.url] }
+    root.kafka_franz.sasl = [
+      {
+        "mechanism": "PLAIN",
+        "username": if this.username == "" { env("BACKBONE_KAFKA_USERNAME") } else { this.username },
+        "password": if this.password == "" { env("BACKBONE_KAFKA_PASSWORD") } else { this.password }
+      }
+    ]
+    root.kafka_franz.tls.enabled = true
+    root.kafka_franz.topic = "dlq"
+    root.kafka_franz.metadata.include_patterns = [ this.headers ]
+    root.kafka_franz.key = "${!%s}".format(this.key)
+  }
+  
+  root.switch.cases = []
+  root.switch.cases."-".check = "errored()"
+  root.switch.cases.0.output = this.apply("dlq")
+  root.switch.cases.0.output.processors = []
+  root.switch.cases.0.output.processors."-".mapping = """root.app = %q
+  root.error = error()
+  root.meta = @ 
+  root.payload = this""".format(this.app)
+  root.switch.cases.0.output.processors."-".log.level = "WARN"
+  root.switch.cases.0.output.processors.1.log.message = "sending error to DLQ: ${!error()}"
+  
+  root.switch.cases."-".output = this.output
+  
+
+
+tests:
+  - name: Test With Kafka
+    config:
+      app: my_app
+      key: this.id
+      url: localhost:9092
+      username: kafka
+      password: changeme
+      output:
+        stdout: {}
+    expected:
+      switch:
+        cases:
+          - check: errored()
+            output:
+              kafka_franz:
+                seed_brokers:
+                  - localhost:9092
+                sasl:
+                  - mechanism: PLAIN
+                    username: kafka
+                    password: changeme
+                tls:
+                  enabled: true
+                topic: dlq
+                metadata:
+                  include_patterns:
+                    - "io.shono..*"
+                key: "${!this.id}"
+              processors:
+                - mapping: |-
+                    root.app = "my_app"
+                    root.error = error()
+                    root.meta = @ 
+                    root.payload = this
+                - log:
+                    level: WARN
+                    message: "sending error to DLQ: ${!error()}"
+          - output:
+              stdout: {}

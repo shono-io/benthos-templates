@@ -1,0 +1,117 @@
+name: salesforce
+type: output
+status: beta
+
+fields:
+  - name: base_url
+    type: string
+    description: the salesforce url
+  - name: key_field
+    type: string
+    description: the name of the external key field to extract the object identifier from
+  - name: sobject
+    type: string
+    description: the kind of object to update
+  - name: auth
+    type: unknown
+    description: the authorization configuration
+
+mapping: |-
+  #!blobl
+  map map_salesforce {
+    root.http_client.url = "%s/services/data/v59.0/composite/sobjects/%s/%s".format(this.base_url, this.sobject, this.key_field)
+    root.http_client.verb = "PATCH"
+    root.http_client.headers.Authorization = """Bearer ${! meta("access_token")}"""
+    root.http_client.headers."Content-Type" = "application/json"
+    root.http_client.batching.count = 200
+    root.http_client.batching.period = "30s"
+  
+    root.http_client.batching.processors = []
+    root.http_client.batching.processors."-".mapping = """root = this
+  root.attributes.type = %q""".format(this.sobject)
+  
+    root.http_client.batching.processors."-".archive.format = "json_array"
+  
+    root.http_client.batching.processors."-".mapping = """root.allOrNone = true
+  root.records = this"""
+  
+    root.http_client.batching.processors."-" = this.apply("map_token_request_branch")
+  
+    root.http_client.batching.processors."-" = this.apply("log")
+  }
+  
+  map log {
+    root.log.level = "INFO"
+    root.log.message = "sending batch of ${!this.records.length()} records to salesforce"
+  }
+  
+  map map_token_request_branch {
+    root.branch.processors = [ this.apply("map_token_request")]
+    root.branch.result_map = """meta access_token = content()"""
+  }
+  
+  map map_token_request {
+    root.salesforce_api_token.cache = this.auth.cache
+    root.salesforce_api_token.cache_key = this.auth.cache_key
+    root.salesforce_api_token.base_url = this.base_url
+    root.salesforce_api_token.client_id = this.auth.client_id
+    root.salesforce_api_token.client_secret = this.auth.client_secret
+    root.salesforce_api_token.username = this.auth.username
+    root.salesforce_api_token.password = this.auth.password
+  }
+  
+  root = this.apply("map_salesforce")
+
+tests:
+  - name: Test With Kafka
+    config:
+      base_url: "https://licatavini--test.sandbox.my.salesforce.com"
+      key_field: "LIC_ArticleCode__c"
+      sobject: "Product2"
+      auth:
+        cache: token_cache
+        cache_key: salesforce_api_token
+        username: "MY_USERNAME"
+        password: "pwd"
+        client_id: "MY_CLIENT_ID"
+        client_secret: "secret"
+    expected:
+      http_client:
+            url: https://licatavini--test.sandbox.my.salesforce.com/services/data/v59.0/composite/sobjects/Product2/LIC_ArticleCode__c
+            verb: PATCH
+            headers:
+              Authorization: Bearer ${! meta("access_token")}
+              Content-Type: "application/json"
+            batching:
+              count: 200
+              period: 30s
+              processors:
+                  - mapping: |-
+                      root = this
+                      root.attributes.type = "Product2"
+
+                  # take all records in the batch and create a single message out of them
+                  - archive:
+                      format: json_array
+
+                  - mapping: |-
+                      root.allOrNone = true
+                      root.records = this
+
+                  # get the access token
+                  - branch:
+                      processors:
+                        - salesforce_api_token:
+                            cache: token_cache
+                            cache_key: salesforce_api_token
+                            base_url: "https://licatavini--test.sandbox.my.salesforce.com"
+                            client_id: "MY_CLIENT_ID"
+                            client_secret: "secret"
+                            username: "MY_USERNAME"
+                            password: "pwd"
+                      result_map: meta access_token = content()
+
+                  - log:
+                      level: INFO
+                      message: "sending batch of ${!this.records.length()} records to salesforce"
+

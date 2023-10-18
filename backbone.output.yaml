@@ -1,0 +1,68 @@
+name: backbone_output
+type: output
+status: beta
+
+fields:
+  - name: scope
+    type: string
+    description: the scope to use for the event
+  - name: key
+    type: string
+    default: "meta(\"io.shono.key\")"
+    description: the dot path to the field to use as the document id
+  - name: url
+    type: string
+    default: ""
+    description: the kafka url to use
+  - name: username
+    type: string
+    default: ""
+    description: the username to use for authentication
+  - name: password
+    type: string
+    default: ""
+    description: the password to use for authentication
+  - name: headers
+    type: string
+    description: the inclusion pattern to use for metadata
+    default: "io.shono..*"
+
+
+mapping: |-
+  root.kafka_franz.seed_brokers = if this.url == "" { env("BACKBONE_KAFKA_URL").split(",") } else { [this.url] }
+  root.kafka_franz.sasl = [
+    {
+      "mechanism": "PLAIN",
+      "username": if this.username == "" { env("BACKBONE_KAFKA_USERNAME") } else { this.username },
+      "password": if this.password == "" { env("BACKBONE_KAFKA_PASSWORD") } else { this.password }
+    }
+  ]
+  root.kafka_franz.tls.enabled = true
+  root.kafka_franz.topic = this.scope
+  root.kafka_franz.metadata.include_patterns = [ this.headers ]
+  root.kafka_franz.key = "${!%s}".format(this.key)
+
+
+tests:
+  - name: Test With Kafka
+    config:
+      scope: govuk
+      key: this.id
+      url: localhost:9092
+      username: kafka
+      password: changeme
+    expected:
+      kafka_franz:
+        seed_brokers:
+          - localhost:9092
+        sasl:
+          - mechanism: PLAIN
+            username: kafka
+            password: changeme
+        tls:
+          enabled: true
+        topic: govuk
+        metadata:
+          include_patterns:
+            - "io.shono..*"
+        key: "${!this.id}"

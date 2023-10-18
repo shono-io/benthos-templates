@@ -1,0 +1,69 @@
+name: debezium_parser
+type: processor
+status: beta
+description: |
+  Parse the message as a debezium message. The resulting message will contain the following fields:
+    - timestamp: the timestamp of the event
+    - transaction: the transaction id of the event
+    - table: the table the event was triggered on
+    - before: the state of the row before the event
+    - after: the state of the row after the event
+    - operation: the operation that was performed on the row
+
+fields: []
+
+mapping: |-
+  root.mapping = """map map_payload {
+    root.timestamp = this.payload.source.ts_ms.or(0)
+    root.transaction = this.payload.transaction.or({})
+    root.table = this.payload.source.table.or("")
+    root.before = this.payload.before.or({})
+    root.after = this.payload.after.or({})
+    root.operation = match this.payload.op.or("") {
+      "d" => "deleted",
+      "c" => "created",
+      "u" => "updated",
+      "r" => if this.payload.source.snapshot.or("false") == "true" { "imported" } else { "updated" },
+      _ => "unknown"
+    }
+  }
+  
+  let key = @kafka_key.parse_json().payload.filter(i -> !i.key.has_prefix("__")).key_values().sort_by(pair -> pair.key).map_each(pair -> pair.value.string().escape_url_query()).join("&")
+
+  meta "io.shono.key" = $key
+  meta timestamp = @kafka_timestamp_unix
+  meta = @.filter(kv -> !kv.key.has_prefix("kafka_"))
+
+  # map the payload
+  root.key = $key
+  root = if this.exists("payload") { root.assign(this.apply("map_payload")) } else { deleted() }"""
+
+tests:
+  - name: Test With Kafka
+    config: {}
+    expected:
+      mapping: |-
+        map map_payload {
+          root.timestamp = this.payload.source.ts_ms.or(0)
+          root.transaction = this.payload.transaction.or({})
+          root.table = this.payload.source.table.or("")
+          root.before = this.payload.before.or({})
+          root.after = this.payload.after.or({})
+          root.operation = match this.payload.op.or("") {
+            "d" => "deleted",
+            "c" => "created",
+            "u" => "updated",
+            "r" => if this.payload.source.snapshot.or("false") == "true" { "imported" } else { "updated" },
+            _ => "unknown"
+          }
+        }
+        
+        let key = @kafka_key.parse_json().payload.filter(i -> !i.key.has_prefix("__")).key_values().sort_by(pair -> pair.key).map_each(pair -> pair.value.string().escape_url_query()).join("&")
+      
+        meta "io.shono.key" = $key
+        meta timestamp = @kafka_timestamp_unix
+        meta = @.filter(kv -> !kv.key.has_prefix("kafka_"))
+      
+        # map the payload
+        root.key = $key
+        root = if this.exists("payload") { root.assign(this.apply("map_payload")) } else { deleted() }

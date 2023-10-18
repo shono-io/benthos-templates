@@ -1,0 +1,55 @@
+name: kv_mget
+type: processor
+status: beta
+description: Returns the values of all specified keys
+
+fields: 
+  - name: redis
+    type: string
+    description: the redis url to use
+  - name: keys
+    type: unknown
+    description: A string array holding the keys to get
+  - name: prefix
+    type: string
+    default: ""
+    description: the prefix to use for the key
+
+
+mapping: |-
+  map kv_get {
+    let prefix = if this.prefix != "" { "%s:".format(this.prefix) } else { "" }
+  
+    root.redis.url = this.redis
+    root.redis.command = "get"
+    root.redis.args_mapping = """root = [ "%s%s:%%s".format(this.key.escape_url_query()) ]""".format($prefix, this.concept)
+  }
+  
+  root.branch.request_map = """root.key = if %[1]s.or("").string().trim().length() == 0 { deleted() } else { %[1]s }""".format(this.key)
+  root.branch.processors = []
+  root.branch.processors."-".try = []
+  root.branch.processors."0".try."-" = this.apply("kv_get")
+  root.branch.processors."0".try."-".mapping = this.on_found_mapping
+  
+  root.branch.processors."-".catch = []
+  root.branch.processors."1".catch."-".noop = {}
+  
+
+tests:
+  - name: Should generate template
+    config:
+      redis: ${REDIS_URL}/4
+      keys:
+        - "address:AAA"
+        - "address:BBB"
+        - "contact:ZZZ"
+    expected:
+      branch:
+        processors:
+          - try:
+            - redis:
+                url: ${REDIS_URL}/4
+                command: mget
+                args_mapping: root = this.keys
+          - catch:
+              - noop: {}

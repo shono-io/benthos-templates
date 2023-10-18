@@ -1,0 +1,36 @@
+# Example input:
+#   - create
+#       request: {"key": "1", "timestamp": 1234567890, "data": {"id":"1","name":"John Doe", "role_code": "owner"}}
+#       returns: {"data":{"_key":"1","_timestamp":1234567890,"code":"1","fullname":"John Doe"},"links":[{"as":"role","from":{"concept":"person","key":"1"},"to":{"concept":"user_role","key":"owner"}}]}
+
+input:
+  generate:
+    count: 1
+    mapping: |-
+      root.key = "%s:%s".format("DEL", "3AB151EB-B29A-4F0E-94B7-0F2BDB066590")
+      root.my_field = "abc"
+      
+
+pipeline:
+  processors:
+    - kv_get:
+        redis: ${REDIS_URL}/5
+        key: this.key
+        concept: "address"
+        result_map: |-
+          map map_result {
+            root.InvoiceCity = this.city
+            root.InvoiceCountry = this.country
+            root.InvoiceAddressPostCode = this.postcode
+            root.InvoiceState = this.state
+            root.InvoiceAddress = this.street
+          }
+      
+          root = if this.found {
+            root.assign(this.result.parse_json().apply("map_result")) 
+          } else { 
+            throw("shipping address INV:%s not found".format(root.ID)) 
+          }
+
+output:
+  stdout: {}

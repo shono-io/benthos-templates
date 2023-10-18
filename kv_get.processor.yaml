@@ -1,0 +1,81 @@
+name: kv_get
+type: processor
+status: beta
+description: get the value for a key from the key value store
+
+fields: 
+  - name: redis
+    type: string
+    description: the redis url to use
+  - name: key
+    type: string
+    description: the dot path to the field containing the key
+  - name: concept
+    type: string
+    description: the concept
+  - name: result_map
+    type: string
+    description: the mapping to apply
+  - name: prefix
+    type: string
+    default: ""
+    description: the prefix to use for the key
+
+
+mapping: |-
+  map kv_get {
+    let prefix = if this.prefix != "" { "%s:".format(this.prefix) } else { "" }
+  
+    root.redis.url = this.redis
+    root.redis.command = "get"
+    root.redis.args_mapping = """root = [ "%s%s:%%s".format(this.key.escape_url_query()) ]""".format($prefix, this.concept)
+    root.redis.retries = 0
+  }
+  
+  root.branch.request_map = """root = if %[1]s.or("").string().trim().length() == 0 { 
+    deleted() 
+  } else { 
+    {"key": %[1]s} 
+  }""".format(this.key)
+  root.branch.processors = []
+  root.branch.processors."-".try = []
+  root.branch.processors."0".try."-" = this.apply("kv_get")
+  root.branch.processors."0".try."-".mapping = """root.result = this
+    root.found = true"""
+  
+  root.branch.processors."-".catch = []
+  root.branch.processors."1".catch."-".mapping = """root.result = null
+    root.found = false"""
+  
+  root.branch.result_map = this.result_map
+  
+
+tests:
+  - name: Should generate template
+    config:
+      redis: ${REDIS_URL}/4
+      key: this.code
+      concept: "year"
+      result_map: |-
+        root.year = this
+    expected:
+      branch:
+        request_map: |-
+          root = if this.code.or("").string().trim().length() == 0 { 
+            deleted() 
+          } else { 
+            {"key": this.code } 
+          }
+        processors:
+          - try:
+            - redis:
+                url: ${REDIS_URL}/4
+                command: get
+                args_mapping: |-
+                  root = [ "year:%s".format(this.key.escape_url_query()) ]
+                retries: 0
+
+          - catch:
+              - mapping: root = nil
+        result_map: |-
+          root.year = this

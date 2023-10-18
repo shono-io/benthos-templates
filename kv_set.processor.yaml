@@ -1,0 +1,52 @@
+name: kv_set
+type: processor
+status: beta
+description: set a key to a value in the key value store
+
+fields: 
+  - name: redis
+    type: string
+    description: the redis url to use
+  - name: key
+    type: string
+    description: the dot path to the field containing the key
+  - name: concept
+    type: string
+    description: the concept
+  - name: prefix
+    type: string
+    default: ""
+    description: the prefix to use for the key
+
+mapping: |-
+  map kv_set {
+    let prefix = if this.prefix != "" { "%s:".format(this.prefix) } else { "" }
+    
+    root.redis.url = this.redis
+    root.redis.command = "set"
+    root.redis.args_mapping = """root = [
+    "%s%s:%%s".format(%s.escape_url_query()),
+    this.format_json()
+  ]""".format($prefix, this.concept, this.key)
+  }
+  
+  root.branch.processors = []
+  root.branch.processors."-" = this.apply("kv_set")
+
+tests:
+  - name: Should generate template
+    config:
+      redis: ${REDIS_URL}/4
+      key: this.code
+      concept: "appellation"
+    expected:
+      branch:
+        processors:
+          - redis:
+              url: ${REDIS_URL}/4
+              command: set
+              args_mapping: |-
+                root = [
+                  "appellation:%s".format(this.code.escape_url_query()),
+                  this.format_json()
+                ]

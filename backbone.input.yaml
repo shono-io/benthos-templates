@@ -1,0 +1,108 @@
+name: backbone_input
+type: input
+status: beta
+
+fields:
+  - name: group
+    type: string
+    description: the consumer group to use
+
+  - name: scopes
+    kind: list
+    type: string
+    description: the scopes to listen for
+
+  - name: brokers
+    kind: list
+    type: string
+    default: ""
+    description: the kafka brokers to connect to
+
+  - name: username
+    type: string
+    default: ""
+    description: the kafka username
+
+  - name: password
+    type: string
+    default: ""
+    description: the kafka password
+
+  - name: batch_count
+    type: int
+    default: 1
+
+  - name: batch_period
+    type: string
+    default: 1s
+
+mapping: |-
+  root.kafka_franz.seed_brokers = if this.brokers == "" {
+    env("BACKBONE_KAFKA_URL").or("").split(",")
+  } else { this.brokers }
+  
+  root.kafka_franz.sasl = [
+    {
+      "mechanism": "PLAIN",
+      "username": if this.username == "" {env("BACKBONE_KAFKA_USERNAME") } else { this.username },
+      "password": if this.password == "" {env("BACKBONE_KAFKA_PASSWORD") } else { this.password }
+    }
+  ]
+  root.kafka_franz.tls.enabled = true
+  root.kafka_franz.consumer_group = this.group
+  root.kafka_franz.topics = this.scopes
+  root.kafka_franz.batching.count = this.batch_count
+  root.kafka_franz.batching.period = this.batch_period
+
+tests:
+  - name: Test With Kafka
+    config:
+      scopes:
+        - hr
+        - iam
+      group: people_injector
+      brokers:
+        - mybroker:9092
+      username: myuser
+      password: mypass
+    expected:
+      kafka_franz:
+        seed_brokers:
+          - mybroker:9092
+        sasl:
+          - mechanism: PLAIN
+            username: myuser
+            password: mypass
+        tls:
+          enabled: true
+        consumer_group: people_injector
+        topics:
+          - hr
+          - iam
+        batching:
+          count: 1
+          period: 1s
+
+  - name: Test Environment Variables
+    config:
+      scopes:
+        - hr
+        - iam
+      group: people_injector
+    expected:
+      kafka_franz:
+        seed_brokers:
+          - ""
+        sasl:
+          - mechanism: PLAIN
+            username:
+            password:
+        tls:
+          enabled: true
+        consumer_group: people_injector
+        topics:
+          - hr
+          - iam
+        batching:
+          count: 1
+          period: 1s

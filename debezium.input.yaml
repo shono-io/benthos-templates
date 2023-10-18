@@ -1,0 +1,50 @@
+name: debezium_input
+type: input
+status: beta
+
+fields:
+  - name: app
+    type: string
+    description: the consumer group to use
+  - name: topic
+    type: string
+    description: the topic containing the row changes
+  - name: debug
+    type: bool
+    default: false
+    description: whether to enable debug logging
+
+mapping: |-
+  map with_kafka {  
+    root.kafka_franz.seed_brokers = [ env("DEBEZIUM_KAFKA_URL") ]
+    root.kafka_franz.sasl = [
+      {
+        "mechanism": "PLAIN",
+        "username": env("DEBEZIUM_KAFKA_USERNAME"),
+        "password": env("DEBEZIUM_KAFKA_PASSWORD")
+      }
+    ]
+    root.kafka_franz.tls.enabled = true
+    root.kafka_franz.consumer_group = this.app
+    root.kafka_franz.topics = [ this.topic ]
+  }
+  
+  root = this.apply("with_kafka")
+
+tests:
+  - name: Test With Kafka
+    config:
+      app: companies_injector
+    expected:
+        kafka_franz:
+            seed_brokers:
+              -
+            sasl:
+              - mechanism: PLAIN
+                username:
+                password:
+            tls:
+              enabled: true
+            consumer_group: companies_injector
+            topics:
+              -

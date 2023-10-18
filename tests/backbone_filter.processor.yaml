@@ -1,0 +1,37 @@
+input:
+  stdin: {}
+
+pipeline:
+  processors:
+    - mapping: |-
+        let events = ["hr:people:created","hr:people:updated","iam:user:authenticated"]
+        let evt = "%s:%s:%s".format(meta("io.shono.scope"), meta("io.shono.concept"), meta("io.shono.event"))
+        root = if $events.contains($evt) { this } else { deleted() }
+
+output:
+  stdout: {}
+
+tests:
+  - name: Should filter out non defined events
+    input_batch:
+      - metadata:
+          io.shono.scope: hr
+          io.shono.concept: people
+          io.shono.event: deleted
+        content: Hello World
+    output_batches: []
+  - name: Should pass defined events
+    input_batch:
+      - metadata:
+          io.shono.scope: hr
+          io.shono.concept: people
+          io.shono.event: created
+        json_content:
+          message: Hello World
+    output_batches:
+      - - json_equals:
+            message: Hello World
+          metadata_equals:
+            io.shono.scope: hr
+            io.shono.concept: people
+            io.shono.event: created

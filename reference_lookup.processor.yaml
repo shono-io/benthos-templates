@@ -1,0 +1,115 @@
+name: lookup_reference
+type: processor
+summary: look for all items matching the given key
+fields:
+  - name: collection
+    type: string
+  - name: resultField
+    type: string
+
+mapping: |-
+  map map_branch {
+    root.branch.request_map = "root = this.%s".format(this.resultField)
+    root.branch.result_map = "root.items = this"
+    root.branch.processors = [
+      this.apply("map_storage")
+    ]
+  }
+
+  map map_storage {
+    root.storage.driver.elasticsearch.password = env("ELASTIC_PASSWORD")
+    root.storage.driver.elasticsearch.username = env("ELASTIC_USERNAME")
+    root.storage.driver.elasticsearch.addresses = [ env("ELASTIC_ENDPOINT") ]
+    root.storage.collection = this.collection
+    root.storage.operation = "list"
+    root.storage.q = """{ 
+    "bool": {
+      "must": [
+        {
+          "query_string": {
+            "fields": ["%s.code.keyword"], 
+            "query": "\"${!this.code}\""
+          }
+        },
+        {
+          "range": {
+            "@timestamp": {
+              "lt": ${!this.timestamp}
+            }
+          }
+        }
+      ]
+    }
+  }""".format(this.resultField)
+  }
+
+  map map_reference_mapping {
+    root.mapping = """map map_item {
+      root.code = this.items.code
+      root.%[1]s = this.%[1]s
+    }
+
+    root.code = this.%[1]s.code
+    root.items = this.explode("items").map_each(item -> item.apply("map_item"))""".format(this.resultField)
+  }
+  
+  root.try = [
+    {
+      "mapping": "root.%s = this".format(this.resultField)
+    },
+    this.apply("map_branch"),
+    this.apply("map_reference_mapping")
+  ]
+
+tests:
+  - name: "basic"
+    config:
+      collection: "licatanet.products"
+      resultField: year
+    expected:
+      try:
+        - mapping: |-
+            root.year = this
+
+        - branch:
+            request_map: root = this.year
+            processors:
+              - storage:
+                  driver:
+                    elasticsearch:
+                      password: 
+                      username: 
+                      addresses:
+                        - 
+                  collection: licatanet.products
+                  operation: list
+                  q: |-
+                    { 
+                      "bool": {
+                        "must": [
+                          {
+                            "query_string": {
+                              "fields": ["year.code.keyword"], 
+                              "query": "\"${!this.code}\""
+                            }
+                          },
+                          {
+                            "range": {
+                              "@timestamp": {
+                                "lt": ${!this.timestamp}
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+
+            result_map: root.items = this
+        - mapping: |-
+            map map_item {
+                root.code = this.items.code
+                root.year = this.year
+            }
+
+            root = this.explode("items").map_each(item -> item.apply("map_item"))
+

@@ -1,0 +1,107 @@
+name: endless_elastic_output
+type: output
+status: beta
+
+fields:
+  - name: index
+    type: string
+    description: the index to write to
+  - name: key
+    type: string
+    description: the key to use for the document
+  - name: debug
+    type: bool
+    default: false
+    description: whether to enable debug logging
+
+mapping: |-
+  #!blobl
+  map elastic {
+    root.elasticsearch.urls = [ env("ELASTIC_ENDPOINT") ]
+    root.elasticsearch.basic_auth = {
+      "enabled": true,
+      "username": env("ELASTIC_USERNAME"),
+      "password": env("ELASTIC_PASSWORD")
+    }
+    
+    root.elasticsearch.tls.enabled = true
+    root.elasticsearch.index = this.index
+    root.elasticsearch.id = this.key
+    root.elasticsearch.action = "upsert"
+    root.elasticsearch.sniff = false
+    root.elasticsearch.timeout = "60s"
+    root.elasticsearch.batching.count = 1000
+    root.elasticsearch.batching.period = "10s"
+    root.elasticsearch.max_in_flight = 1
+    root.elasticsearch.backoff.max_elapsed_time = 0
+  }
+  
+  map debug {
+    root.stdout.codec = "lines"
+  }
+  
+  root = if this.debug {
+    this.apply("debug")
+  } else {
+    {
+      "switch": {
+        "cases": [
+          {
+            "check": "!errored()",
+            "output": this.apply("elastic")
+          },
+          {
+            "output": {
+              "reject": "Unable to process message: ${! error() }",
+              "processors": [
+                {
+                  "log": {
+                    "level": "ERROR",
+                    "message": "Unable to process message: ${! error() }"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+
+tests:
+  - name: Test With Kafka
+    config:
+      key: "mykey"
+      index: "govuk"
+    expected:
+      switch:
+        cases:
+          - check: "!errored()"
+            output:
+              elasticsearch:
+                urls:
+                  - 
+                basic_auth:
+                  enabled: true
+                  username: 
+                  password: 
+                tls:
+                  enabled: true
+                index: govuk
+                id: mykey
+                action: upsert
+          - output:
+              reject: "Unable to process message: ${! error() }"
+              processors:
+                - log:
+                    level: ERROR
+                    message: "Unable to process message: ${! error() }"
+
+  - name: Test With Debug
+    config:
+      index: "govuk"
+      key: "mykey"
+      debug: true
+    expected:
+      stdout:
+        codec: lines
