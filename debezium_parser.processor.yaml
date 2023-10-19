@@ -28,6 +28,12 @@ mapping: |-
     }
   }
   
+  root.operation = if meta("kafka_tombstone") == "true" {
+    "deleted" 
+  } else { 
+    root.operation 
+  }
+  
   let key = @kafka_key.parse_json().payload.filter(i -> !i.key.has_prefix("__")).key_values().sort_by(pair -> pair.key).map_each(pair -> pair.value.string().escape_url_query()).join("&")
 
   meta "io.shono.key" = $key

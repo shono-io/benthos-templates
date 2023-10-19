@@ -1,0 +1,99 @@
+input:
+  generate:
+    count: 1
+    mapping: |-
+      root = {
+        "AccountID": "4AE9B897-692B-4F27-A815-9AEC214241FF",
+        "ContactID": "A2056435-71BE-4D37-8B0F-281D0F96DF5F",
+        "EmailAddress": "",
+        "Firstname": "",
+        "JobTitle": "--",
+        "Language": "NL",
+        "LanguageDescription": "Dutch",
+        "LanguageLabel": "NL",
+        "Lastname": "--",
+        "MobileNumber": "",
+        "PhoneNumber": "",
+        "Title": "DHR",
+        "TitleAbbreviation": "Dhr.",
+        "TitleDescription": "De heer",
+        "TitleHeading": "Geachte heer"
+      }
+
+
+pipeline:
+  processors:
+    - mapping: |-
+        root.Account.LIC_InternalCustomerID__c = this.AccountID
+        root.Account = this.AccountID
+        root.Salutation = this.Title
+        root.Firstname = this.Firstname
+        root.Lastname = this.Lastname
+        root.Title = this.JobTitle
+        root.Email = this.EmailAddress
+        root.Phone = this.PhoneNumber
+        root.MobilePhone = this.MobileNumber
+        root.LIC_External_Id__c = this.ContactID
+        
+        root.LIC_Language__c = match this.Language {
+          "NL" => "NL",
+          "FR" => "FR",
+          "EN" => "EN",
+          "IT" => "IT",
+          _ => "Other"
+        }
+    - log:
+        message: "processing ${!this}"
+
+
+output:
+  fallback:
+    - http_client:
+        url: "${SALESFORCE_BASE_URL}/services/data/v59.0/composite/sobjects/Contact/LIC_External_Id__c"
+        verb: PATCH
+        dump_request_log_level: "DEBUG"
+        headers:
+          Authorization: Bearer ${! meta("access_token")}
+          Content-Type: "application/json"
+        batching:
+          count: 200
+          period: 1s
+          processors:
+            - mapping: |-
+                root = this
+                root.attributes.type = "Contact"
+
+            # take all records in the batch and create a single message out of them
+            - archive:
+                format: json_array
+
+            - mapping: |-
+                root.allOrNone = true
+                root.records = this
+
+            # get the access token
+            - branch:
+                processors:
+                  - salesforce_api_token:
+                      cache: system_cache
+                      cache_key: salesforce_api_token
+                      base_url: "${SALESFORCE_BASE_URL}"
+                      client_id: "${SALESFORCE_CLIENT_KEY}"
+                      client_secret: "${SALESFORCE_CLIENT_SECRET}"
+                      username: "${SALESFORCE_USERNAME}"
+                      password: "${SALESFORCE_PASSWORD}"
+                result_map: meta access_token = content()
+
+            - log:
+                level: INFO
+                message: "sending batch of ${!this.records.length()} records to salesforce"
+    - stdout: {}
+      processors:
+        - mapping: |-
+            root.message = "error sending to salesforce: ${!error()}"
+            root.data = this
+
+cache_resources:
+  - label: system_cache
+    redis:
+      url: ${TEST_REDIS_URL}

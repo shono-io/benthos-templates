@@ -1,0 +1,187 @@
+input:
+  generate:
+    count: 1
+    mapping: |-
+      root = {
+        "BillingCity": "Brakel",
+        "BillingCountry": "BE ",
+        "BillingPostalCode": null,
+        "BillingState": "O-V",
+        "BillingStreet": "Valkenbergstraat 27",
+        "Description": "",
+        "LIC_BestRating__c": null,
+        "LIC_BillingEmail__c": "els.haesebroek@icloud.com",
+        "LIC_Classification__c": null,
+        "LIC_ConsumerStartDate__c": "2019-12-31T16:12:32.256Z",
+        "LIC_CreditLimitAmount__c": 315.0,
+        "LIC_Email__c": "els.haesebroek@icloud.com",
+        "LIC_InternalCustomerCode__c": "20100022450",
+        "LIC_InternalCustomerID__c": "4AE9B897-692B-4F27-A815-9AEC214241FF",
+        "LIC_PaymentTerms__c": "33",
+        "LIC_Status__c": "Customer",
+        "LIC_VATLiable__c": "L",
+        "LIC_VATNumber__c": "BE0810569909",
+        "Name": "Esme-shop",
+        "Owner": {
+          "EmployeeNumber": 55
+        },
+        "Phone": "0475 267624",
+        "Rating": 3,
+        "RecordType": {
+          "Name": "B2B"
+        },
+        "ShippingCity": "Brakel",
+        "ShippingCountry": "BE ",
+        "ShippingPostalCode": null,
+        "ShippingState": "O-V",
+        "ShippingStreet": "Valkenbergstraat 27",
+        "Type": "G",
+        "Website": ""
+      }
+
+
+pipeline:
+  processors:
+    - mapping: |-
+        map map_commons {
+          root.LIC_Status__c = match this.CustomerStatus {
+            "B" => "Blocked",
+            "E" => "Non-Active",
+            "A" => "Customer",
+          }
+
+          root.LIC_InternalCustomerCode__c = this.DebtorCode
+          root.LIC_InternalCustomerID__c = this.ID
+          root.LIC_Classification__c = root.ClassificationID
+          root.LIC_ConsumerStartDate__c = (this.CreatedDate.float32() / 1000.0).ts_format("2006-01-02T15:04:05.999Z")
+          root.Phone = this.PhoneNumber
+          root.LIC_Email__c = this.EmailAddress
+          root.LIC_PaymentTerms__c = this.PaymentCondition
+          root.LIC_VATLiable__c = this.VATLiability
+          root.LIC_VATNumber__c = this.VATNumber
+          root.LIC_BillingEmail__c = this.EmailAddress
+          root.LIC_CreditLimitAmount__c = this.CreditLine
+          root.ShippingCity = this.DeliveryCity
+          root.ShippingCountry = this.DeliveryCountry
+          root.ShippingPostalCode = this.DeliveryPostCode
+          root.ShippingState = this.DeliveryState
+          root.ShippingStreet = this.DeliveryAddressline1
+          root.BillingCity = this.InvoiceCity
+          root.BillingCountry = this.InvoiceCountry
+          root.BillingPostalCode = this.InvoiceAddressPostCode
+          root.BillingState = this.InvoiceState
+          root.BillingStreet = this.InvoiceAddress
+          root.Description = this.Note
+          root.Rating = this.Rating
+          root.LIC_BestRating__c = this.apply("map_best_rating")
+          root.Owner.EmployeeNumber = this.apply("map_owner")
+          #          root.Parent.LIC_InternalCustomerCode__c = this.Parent
+        }
+
+        map map_b2c {
+          root.Salutation = this.ContactTitle
+          root.FirstName = this.ContactFirstName
+          root.LastName = this.ContactLastName
+          root.PersonMobilePhone = this.ContactMobileNumber
+          root.LIC_Language__pc = match this.ContactLanguage {
+            "NL" => "NL",
+            "FR" => "FR",
+            "EN" => "EN",
+            "IT" => "IT",
+            _ => "Other"
+          }
+
+          root.PersonBirthdate = if this.DateFreeField1 != null {
+            (this.DateFreeField1.float32() / 1000.0).ts_format("2006-01-02T15:04:05.999Z")
+          } else {
+            null
+          }
+        }
+
+        map map_b2b {
+          root.Type = this.ClassificationClass
+          root.Website = this.WebAddress
+          root.Name = this.AccountName
+        }
+
+        map map_owner {
+          root = match this.AccountManagerID {
+            [51, 10, 11, 13, 3, 66, 69, 70, 55].contains(this) => this,
+            _ => 27
+          }
+        }
+
+        map map_best_rating {
+          root = if this.NumberFreeField2.ceil() == 0 {
+            match {
+              this.ClassificationAudience == "B2C" => 7
+              this.ClassificationAudience == "B2B" => 4
+            }
+          } else {
+            this.NumberFreeField1
+          }
+        }
+
+        root = match {
+          this.ClassificationAudience == "B2C" => this.apply("map_b2c")
+          this.ClassificationAudience == "B2B" => this.apply("map_b2b")
+          _ => deleted()
+        }
+
+        root = root.assign(this.apply("map_commons"))
+        root.RecordType = {"Name": this.ClassificationAudience}
+    - log:
+        message: "processing ${!this}"
+
+
+output:
+  fallback:
+    - http_client:
+        url: "${SALESFORCE_BASE_URL}/services/data/v59.0/composite/sobjects/Account/LIC_InternalCustomerID__C"
+        verb: PATCH
+        dump_request_log_level: "DEBUG"
+        headers:
+          Authorization: Bearer ${! meta("access_token")}
+          Content-Type: "application/json"
+        batching:
+          count: 200
+          period: 1s
+          processors:
+            - mapping: |-
+                root = this
+                root.attributes.type = "Account"
+
+            # take all records in the batch and create a single message out of them
+            - archive:
+                format: json_array
+
+            - mapping: |-
+                root.allOrNone = true
+                root.records = this
+
+            # get the access token
+            - branch:
+                processors:
+                  - salesforce_api_token:
+                      cache: system_cache
+                      cache_key: salesforce_api_token
+                      base_url: "${SALESFORCE_BASE_URL}"
+                      client_id: "${SALESFORCE_CLIENT_KEY}"
+                      client_secret: "${SALESFORCE_CLIENT_SECRET}"
+                      username: "${SALESFORCE_USERNAME}"
+                      password: "${SALESFORCE_PASSWORD}"
+                result_map: meta access_token = content()
+
+            - log:
+                level: INFO
+                message: "sending batch of ${!this.records.length()} records to salesforce"
+    - stdout: {}
+      processors:
+        - mapping: |-
+            root.message = "error sending to salesforce: ${!error()}"
+            root.data = this
+
+cache_resources:
+  - label: system_cache
+    redis:
+      url: ${TEST_REDIS_URL}
