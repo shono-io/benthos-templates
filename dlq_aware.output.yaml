@@ -29,6 +29,10 @@ fields:
     type: string
     description: the inclusion pattern to use for metadata
     default: ".*"
+  - name: reject_on_error
+    type: bool
+    default: false
+    description: whether to reject the message on error
 
 
 mapping: |-
@@ -45,19 +49,35 @@ mapping: |-
     root.kafka_franz.topic = "dlq"
     root.kafka_franz.metadata.include_patterns = [ this.headers ]
     root.kafka_franz.key = "${!%s}".format(this.key)
+  
+    root.processors = []
+    root.processors."-".mapping = """root.app = %q
+  root.error = error()
+  root.meta = @ 
+  root.payload = this""".format(this.app)
+    root.processors."-".log.level = "WARN"
+    root.processors.1.log.message = "sending error to DLQ: ${!error()}"
+  }
+  
+  map error_output {
+    root = if this.reject_on_error {
+      this.apply("broker_error_output")
+    } else {
+      this.apply("dlq")
+    }
+  }
+  
+  map broker_error_output {
+    root.broker.pattern = "fan_out"
+    root.broker.outputs = [
+      { "reject": "Unable to process message: ${! error() }" },
+      this.apply("dlq"),
+    ]
   }
   
   root.switch.cases = []
   root.switch.cases."-".check = "errored()"
-  root.switch.cases.0.output = this.apply("dlq")
-  root.switch.cases.0.output.processors = []
-  root.switch.cases.0.output.processors."-".mapping = """root.app = %q
-  root.error = error()
-  root.meta = @ 
-  root.payload = this""".format(this.app)
-  root.switch.cases.0.output.processors."-".log.level = "WARN"
-  root.switch.cases.0.output.processors.1.log.message = "sending error to DLQ: ${!error()}"
-  
+  root.switch.cases.0.output = this.apply("error_output")
   root.switch.cases."-".output = this.output
   
 
@@ -89,7 +109,7 @@ tests:
                 topic: dlq
                 metadata:
                   include_patterns:
-                    - "io.shono..*"
+                    - ".*"
                 key: "${!this.id}"
               processors:
                 - mapping: |-
@@ -100,5 +120,49 @@ tests:
                 - log:
                     level: WARN
                     message: "sending error to DLQ: ${!error()}"
+          - output:
+              stdout: {}
+  - name: Should Reject if requested so
+    config:
+      app: my_app
+      key: this.id
+      url: localhost:9092
+      username: kafka
+      password: changeme
+      output:
+        stdout: {}
+      reject_on_error: true
+    expected:
+      switch:
+        cases:
+          - check: errored()
+            output:
+              broker:
+                pattern: fan_out
+                outputs:
+                  - reject: "Unable to process message: ${! error() }"
+                  - kafka_franz:
+                      seed_brokers:
+                        - localhost:9092
+                      sasl:
+                        - mechanism: PLAIN
+                          username: kafka
+                          password: changeme
+                      tls:
+                        enabled: true
+                      topic: dlq
+                      metadata:
+                        include_patterns:
+                          - ".*"
+                      key: "${!this.id}"
+                    processors:
+                      - mapping: |-
+                          root.app = "my_app"
+                          root.error = error()
+                          root.meta = @ 
+                          root.payload = this
+                      - log:
+                          level: WARN
+                          message: "sending error to DLQ: ${!error()}"
           - output:
               stdout: {}
