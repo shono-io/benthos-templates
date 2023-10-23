@@ -16,12 +16,12 @@ fields:
 
 mapping: |-
   map with_kafka {  
-    root.kafka_franz.seed_brokers = [ env("DEBEZIUM_KAFKA_URL") ]
+    root.kafka_franz.seed_brokers = [ env("BACKBONE_KAFKA_URL") ]
     root.kafka_franz.sasl = [
       {
         "mechanism": "PLAIN",
-        "username": env("DEBEZIUM_KAFKA_USERNAME"),
-        "password": env("DEBEZIUM_KAFKA_PASSWORD")
+        "username": env("BACKBONE_KAFKA_USERNAME"),
+        "password": env("BACKBONE_KAFKA_PASSWORD")
       }
     ]
     root.kafka_franz.tls.enabled = true
