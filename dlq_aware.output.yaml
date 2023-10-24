@@ -37,6 +37,7 @@ fields:
 
 mapping: |-
   map dlq {
+    root.label = "dlq"
     root.kafka_franz.seed_brokers = if this.url == "" { env("BACKBONE_KAFKA_URL").split(",") } else { [this.url] }
     root.kafka_franz.sasl = [
       {
@@ -70,8 +71,8 @@ mapping: |-
   map broker_error_output {
     root.broker.pattern = "fan_out"
     root.broker.outputs = [
-      { "reject": "Unable to process message: ${! error() }" },
       this.apply("dlq"),
+      { "label": "reject", "reject": "Unable to process message: ${! error() }" }
     ]
   }
   
@@ -79,6 +80,7 @@ mapping: |-
   root.switch.cases."-".check = "errored()"
   root.switch.cases.0.output = this.apply("error_output")
   root.switch.cases."-".output = this.output
+  root.switch.cases.1.output.label = "output"
   
 
 
@@ -97,6 +99,7 @@ tests:
         cases:
           - check: errored()
             output:
+              label: dlq
               kafka_franz:
                 seed_brokers:
                   - localhost:9092
@@ -121,6 +124,7 @@ tests:
                     level: WARN
                     message: "sending error to DLQ: ${!error()}"
           - output:
+              label: output
               stdout: {}
   - name: Should Reject if requested so
     config:
@@ -140,8 +144,8 @@ tests:
               broker:
                 pattern: fan_out
                 outputs:
-                  - reject: "Unable to process message: ${! error() }"
-                  - kafka_franz:
+                  - label: dlq
+                    kafka_franz:
                       seed_brokers:
                         - localhost:9092
                       sasl:
@@ -164,5 +168,8 @@ tests:
                       - log:
                           level: WARN
                           message: "sending error to DLQ: ${!error()}"
+                  - label: reject
+                    reject: "Unable to process message: ${! error() }"
           - output:
+              label: output
               stdout: {}

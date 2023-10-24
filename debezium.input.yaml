@@ -25,7 +25,7 @@ mapping: |-
       }
     ]
     root.kafka_franz.tls.enabled = true
-    root.kafka_franz.consumer_group = this.app
+    root.kafka_franz.consumer_group = "%s__%s".format(env("SHONO_ENV").or("dev"), this.app)
     root.kafka_franz.topics = [ this.topic ]
   }
   

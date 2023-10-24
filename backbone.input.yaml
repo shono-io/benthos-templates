@@ -49,7 +49,7 @@ mapping: |-
     }
   ]
   root.kafka_franz.tls.enabled = true
-  root.kafka_franz.consumer_group = this.group
+  root.kafka_franz.consumer_group = "%s__%s".format(env("SHONO_ENV").or("dev"), this.group)
   root.kafka_franz.topics = this.scopes
   root.kafka_franz.batching.count = this.batch_count
   root.kafka_franz.batching.period = this.batch_period
@@ -75,7 +75,7 @@ tests:
             password: mypass
         tls:
           enabled: true
-        consumer_group: people_injector
+        consumer_group: dev__people_injector
         topics:
           - hr
           - iam
@@ -99,7 +99,7 @@ tests:
             password:
         tls:
           enabled: true
-        consumer_group: people_injector
+        consumer_group: dev__people_injector
         topics:
           - hr
           - iam

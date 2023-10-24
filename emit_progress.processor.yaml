@@ -1,0 +1,35 @@
+name: emit_progress
+type: processor
+status: beta
+
+fields: []
+
+mapping: |-
+  map metric {
+    root.metric.type = "gauge"
+    root.metric.name = "latest_offset"
+    root.metric.labels.topic = """${! meta("kafka_topic") }"""
+    root.metric.labels.partition = """${! meta("kafka_partition") }"""
+    root.metric.value = """${! meta("kafka_offset").int64() }"""
+  }
+  
+  root.branch.request_map = """root = if meta("kafka_offset").or("") == "" || meta("kafka_partition").or("") == "" { deleted() } else { this }"""
+  root.branch.processors = [
+    this.apply("metric")
+  ]
+
+tests:
+  - name: Test With Kafka
+    config: {}
+    expected:
+      branch:
+        request_map: |-
+          root = if meta("kafka_offset").or("") == "" || meta("kafka_partition").or("") == "" { deleted() } else { this }
+        processors:
+          - metric:
+              type: gauge
+              name: "latest_offset"
+              labels:
+                topic: ${! meta("kafka_topic") }
+                partition: ${! meta("kafka_partition") }
+              value: ${! meta("kafka_offset").int64() }

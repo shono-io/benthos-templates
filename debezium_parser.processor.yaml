@@ -28,7 +28,7 @@ mapping: |-
     }
   }
   
-  root.operation = if meta("kafka_tombstone") == "true" {
+  root.operation = if meta("kafka_tombstone_message") == "true" {
     "deleted" 
   } else { 
     root.operation 
@@ -42,7 +42,7 @@ mapping: |-
 
   # map the payload
   root.key = $key
-  root = if this.exists("payload") { root.assign(this.apply("map_payload")) } else { deleted() }"""
+  root = if content().length() > 0 && this.exists("payload") { root.assign(this.apply("map_payload")) } else { deleted() }"""
 
 tests:
   - name: Test With Kafka
@@ -72,4 +72,4 @@ tests:
       
         # map the payload
         root.key = $key
-        root = if this.exists("payload") { root.assign(this.apply("map_payload")) } else { deleted() }
+        root = if content().length() > 0 && this.exists("payload") { root.assign(this.apply("map_payload")) } else { deleted() }
