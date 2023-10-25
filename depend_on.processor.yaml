@@ -37,7 +37,8 @@ mapping: |-
   root.branch.processors."1".catch."-".mapping = """root.result = null
   root.found = false"""
   
-  root.branch.result_map = """root = if this.found { root } else { throw("account %%s dependency not found").format(%s) }""".format(this.key)
+  root.branch.result_map = """meta err_code = if this.found { deleted() } else { "DEPENDENCY_NOT_FOUND" }
+  root = if this.found { root } else { throw("account %%s dependency not found".format(%s)) }""".format(this.key)
 
 tests:
   - name: Test
@@ -70,4 +71,6 @@ tests:
               - mapping: |-
                   root.result = null
                   root.found = false
-        result_map: root = if this.found { root } else { throw("account %s dependency not found").format(this.AccountId) }
+        result_map: |-
+          meta err_code = if this.found { deleted() } else { "DEPENDENCY_NOT_FOUND" }
+          root = if this.found { root } else { throw("account %s dependency not found".format(this.AccountId)) }

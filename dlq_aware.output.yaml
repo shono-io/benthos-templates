@@ -54,10 +54,20 @@ mapping: |-
     root.processors = []
     root.processors."-".mapping = """root.app = %q
   root.error = error()
+  root.code = @err_code
   root.meta = @ 
   root.payload = this""".format(this.app)
-    root.processors."-".log.level = "WARN"
-    root.processors.1.log.message = "sending error to DLQ: ${!error()}"
+  
+    root.processors."-".metric = {
+      "type": "counter",
+      "name": "death_letter_sent",
+      "labels": {
+        "app": this.app,
+        "code": "${! meta(\"err_code\").or(\"GENERIC_ERROR\") }"
+      }
+    }
+  
+    root.processors."-".log = {"level": "WARN", "message": "sending error to DLQ: ${!error()}"}
   }
   
   map error_output {
@@ -77,10 +87,14 @@ mapping: |-
   }
   
   root.switch.cases = []
-  root.switch.cases."-".check = "errored()"
+  root.switch.cases."-".check = "errored() && meta(\"err_code\") != \"DEPENDENCY_NOT_FOUND\""
   root.switch.cases.0.output = this.apply("error_output")
+  
+  root.switch.cases."-".check = "errored() && meta(\"err_code\") == \"DEPENDENCY_NOT_FOUND\""
+  root.switch.cases.1.output = { "label": "dependency_not_found", "reject": "${! error() }" }
+  
   root.switch.cases."-".output = this.output
-  root.switch.cases.1.output.label = "output"
+  root.switch.cases.2.output.label = "output"
   
 
 
@@ -97,7 +111,7 @@ tests:
     expected:
       switch:
         cases:
-          - check: errored()
+          - check: errored() && meta("err_code") != "DEPENDENCY_NOT_FOUND"
             output:
               label: dlq
               kafka_franz:
@@ -118,11 +132,22 @@ tests:
                 - mapping: |-
                     root.app = "my_app"
                     root.error = error()
+                    root.code = @err_code
                     root.meta = @ 
                     root.payload = this
+                - metric:
+                    type: counter
+                    name: "death_letter_sent"
+                    labels:
+                      app: "my_app"
+                      code: ${! meta("err_code").or("GENERIC_ERROR") }
                 - log:
                     level: WARN
                     message: "sending error to DLQ: ${!error()}"
+          - check: errored() && meta("err_code") == "DEPENDENCY_NOT_FOUND"
+            output:
+              label: dependency_not_found
+              reject: "${! error() }"
           - output:
               label: output
               stdout: {}
@@ -139,7 +164,7 @@ tests:
     expected:
       switch:
         cases:
-          - check: errored()
+          - check: errored() && meta("err_code") != "DEPENDENCY_NOT_FOUND"
             output:
               broker:
                 pattern: fan_out
@@ -163,13 +188,25 @@ tests:
                       - mapping: |-
                           root.app = "my_app"
                           root.error = error()
+                          root.code = @err_code
                           root.meta = @ 
                           root.payload = this
+                      - metric:
+                          type: counter
+                          name: "death_letter_sent"
+                          labels:
+                            app: "my_app"
+                            code: ${! meta("err_code").or("GENERIC_ERROR") }
                       - log:
                           level: WARN
                           message: "sending error to DLQ: ${!error()}"
                   - label: reject
                     reject: "Unable to process message: ${! error() }"
+          - check: errored() && meta("err_code") == "DEPENDENCY_NOT_FOUND"
+            output:
+              label: dependency_not_found
+              reject: "${! error() }"
+
           - output:
               label: output
               stdout: {}
