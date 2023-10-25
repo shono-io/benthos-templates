@@ -41,11 +41,11 @@ mapping: |-
   root.branch.processors."-".try = []
   root.branch.processors."0".try."-" = this.apply("kv_get")
   root.branch.processors."0".try."-".mapping = """root.result = this
-    root.found = true"""
+  root.found = true"""
   
   root.branch.processors."-".catch = []
   root.branch.processors."1".catch."-".mapping = """root.result = null
-    root.found = false"""
+  root.found = false"""
   
   root.branch.result_map = this.result_map
   
@@ -64,7 +64,7 @@ tests:
           root = if this.code.or("").string().trim().length() == 0 { 
             deleted() 
           } else { 
-            {"key": this.code } 
+            {"key": this.code} 
           }
         processors:
           - try:
@@ -74,8 +74,13 @@ tests:
                 args_mapping: |-
                   root = [ "year:%s".format(this.key.escape_url_query()) ]
                 retries: 0
+            - mapping: |-
+                root.result = this
+                root.found = true
 
           - catch:
-              - mapping: root = nil
+              - mapping: |-
+                  root.result = null
+                  root.found = false
         result_map: |-
           root.year = this

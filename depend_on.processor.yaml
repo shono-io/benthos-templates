@@ -1,0 +1,73 @@
+name: depend_on
+type: processor
+status: beta
+
+fields:
+  - name: redis
+    type: string
+    description: the redis url to use
+  - name: concept
+    type: string
+    description: the concept to depend on
+  - name: key
+    type: string
+    description: the key to depend on
+
+mapping: |-
+  map kv_get {
+    root.label = "check_%s_dependency".format(this.concept)
+    root.redis.url = this.redis
+    root.redis.command = "get"
+    root.redis.args_mapping = """root = [ "dependencies:%s:%%s".format(this.key.escape_url_query()) ]""".format(this.concept)
+    root.redis.retries = 0
+  }
+  
+  root.branch.request_map = """root = if %[1]s.or("").string().trim().length() == 0 { 
+    deleted() 
+  } else { 
+    {"key": %[1]s} 
+  }""".format(this.key)
+  root.branch.processors = []
+  root.branch.processors."-".try = []
+  root.branch.processors."0".try."-" = this.apply("kv_get")
+  root.branch.processors."0".try."-".mapping = """root.result = this
+  root.found = true"""
+  
+  root.branch.processors."-".catch = []
+  root.branch.processors."1".catch."-".mapping = """root.result = null
+  root.found = false"""
+  
+  root.branch.result_map = """root = if this.found { root } else { throw("account %%s dependency not found").format(%s) }""".format(this.key)
+
+tests:
+  - name: Test
+    config:
+      redis: ${REDIS_URL}
+      concept: "account"
+      key: "this.AccountId"
+    expected:
+      branch:
+        request_map: |-
+          root = if this.AccountId.or("").string().trim().length() == 0 { 
+            deleted() 
+          } else { 
+            {"key": this.AccountId} 
+          }
+        processors:
+          - try:
+              - label: "check_account_dependency"
+                redis:
+                  url: ${REDIS_URL}
+                  command: get
+                  args_mapping: |-
+                    root = [ "dependencies:account:%s".format(this.key.escape_url_query()) ]
+                  retries: 0
+              - mapping: |-
+                  root.result = this
+                  root.found = true
+
+          - catch:
+              - mapping: |-
+                  root.result = null
+                  root.found = false
+        result_map: root = if this.found { root } else { throw("account %s dependency not found").format(this.AccountId) }

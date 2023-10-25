@@ -1,0 +1,47 @@
+name: flag_processed
+type: processor
+status: beta
+
+fields:
+  - name: redis
+    type: string
+    description: the redis url to use
+  - name: concept
+    type: string
+    description: the concept of the current message
+  - name: key
+    type: string
+    description: the expression to retrieve the key from the current message
+
+mapping: |-
+  map kv_set {
+    root.label = "flag_%s_as_processed".format(this.concept)
+    root.redis.url = this.redis
+    root.redis.command = "set"
+    root.redis.args_mapping = """root = [
+    "dependencies:%s:%%s".format(%s.escape_url_query()),
+    now()
+  ]""".format(this.concept, this.key)
+  }
+  
+  root.branch.processors = []
+  root.branch.processors."-" = this.apply("kv_set")
+
+tests:
+  - name: Test
+    config:
+      redis: ${REDIS_URL}
+      concept: "account"
+      key: "this.AccountId"
+    expected:
+      branch:
+        processors:
+          - label: flag_account_as_processed
+            redis:
+              url: ${REDIS_URL}
+              command: set
+              args_mapping: |-
+                root = [
+                  "dependencies:account:%s".format(this.AccountId.escape_url_query()),
+                  now()
+                ]
