@@ -16,6 +16,7 @@ mapping: |-
   root.mapping = """map map_payload {
     root.timestamp = this.payload.source.ts_ms.or(0)
     root.transaction = this.payload.transaction.or({})
+    root.db = this.payload.source.db.or("")
     root.table = this.payload.source.table.or("")
     root.before = this.payload.before.or({})
     root.after = this.payload.after.or({})
@@ -29,9 +30,9 @@ mapping: |-
   }
   
   root.operation = if meta("kafka_tombstone_message") == "true" {
-    "deleted" 
-  } else { 
-    root.operation 
+    "deleted"
+  } else {
+    root.operation
   }
   
   let key = @kafka_key.parse_json().payload.filter(i -> !i.key.has_prefix("__")).key_values().sort_by(pair -> pair.key).map_each(pair -> pair.value.string().escape_url_query()).join("&")
@@ -52,6 +53,7 @@ tests:
         map map_payload {
           root.timestamp = this.payload.source.ts_ms.or(0)
           root.transaction = this.payload.transaction.or({})
+          root.db = this.payload.source.db.or("")
           root.table = this.payload.source.table.or("")
           root.before = this.payload.before.or({})
           root.after = this.payload.after.or({})
@@ -62,6 +64,12 @@ tests:
             "r" => if this.payload.source.snapshot.or("false") == "true" { "imported" } else { "updated" },
             _ => "unknown"
           }
+        }
+        
+        root.operation = if meta("kafka_tombstone_message") == "true" {
+          "deleted"
+        } else {
+          root.operation
         }
         
         let key = @kafka_key.parse_json().payload.filter(i -> !i.key.has_prefix("__")).key_values().sort_by(pair -> pair.key).map_each(pair -> pair.value.string().escape_url_query()).join("&")

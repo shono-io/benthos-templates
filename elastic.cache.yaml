@@ -25,7 +25,7 @@ mapping: |-
         "index": this.index,
         "password" : env("ELASTIC_PASSWORD"),
         "username" : env("ELASTIC_USERNAME"),
-        "addresses" : [env("ELASTIC_ENDPOINT")]
+        "addresses" : [env("ELASTIC_ENDPOINT").or(deleted())]
       }
     }
   }

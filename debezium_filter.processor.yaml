@@ -1,72 +1,73 @@
-name: backbone_filter
+name: debezium_filter
 type: processor
 status: beta
 
 fields:
-  - name: events
+  - name: changes
     kind: list
     type: string
-    description: the events to listen for in the format <scope>:<concept>:<event>
+    description: the changes to listen for in the format <table>:<change>
 
 mapping: |-
   map filter {
     root.mapping = """
-    let events = %s
-    let evt = if content().length() != 0 {
-      "%%s:%%s:%%s".format(meta("io.shono.scope"), meta("io.shono.concept"), meta("io.shono.event"))
+    let changes = %s
+    let change = if content().length() != 0 {
+      "%%s:%%s".format(this.table, this.operation)
     } else {
       "unknown"
     }
-    root.found = $events.contains($evt)""".format(this.events.format_json(no_indent: true))
+    root.found = $changes.contains($change)""".format(this.events.format_json(no_indent: true))
   }
-
+  
   map metric {
     root.switch = [
       {"check": "root.found", "processors": [this.apply("metric_processing")]},
       {"processors": [this.apply("metric_filtered")]}
     ]
   }
-
+  
   map metric_processing {
     root.metric.type = "counter"
     root.metric.name = "io_shono_processing"
     root.metric.labels.app = "${APP_ID}"
-    root.metric.labels.kind = "event"
-    root.metric.labels.scope = "${!meta(\"io.shono.scope\")}"
-    root.metric.labels.concept = "${!meta(\"io.shono.concept\")}"
-    root.metric.labels.event = "${!meta(\"io.shono.event\")}"
+    root.metric.labels.kind = "cdc"
+    root.metric.labels.operation = "${!this.operation}"
+    root.metric.labels.table = "${!this.table}"
+    root.metric.labels.db = "${!this.db}"
   }
-
+  
   map metric_filtered {
     root.metric.type = "counter"
     root.metric.name = "io_shono_filtered"
     root.metric.labels.app = "${APP_ID}"
-    root.metric.labels.kind = "event"
+    root.metric.labels.kind = "cdc"
   }
-
+  
   root.branch.processors = [
     this.apply("filter"),
     this.apply("metric")
   ]
+
 tests:
   - name: Test With Kafka
     config:
+      scope: "exact"
       events:
-        - hr:people:created
-        - hr:people:updated
-        - iam:user:authenticated
+        - cicmpy:created
+        - cicmpy:updated
+        - cicmpy:imported
     expected:
       branch:
         processors:
           - mapping: |-
-              let events = ["hr:people:created","hr:people:updated","iam:user:authenticated"]
-              let evt = if content().length() != 0 {
-                "%s:%s:%s".format(meta("io.shono.scope"), meta("io.shono.concept"), meta("io.shono.event"))
+              let changes = ["cicmpy:created","cicmpy:updated","cicmpy:imported"]
+              let change = if content().length() != 0 {
+                "%s:%s".format(this.table, this.operation)
               } else {
                 "unknown"
               }
-              root.found = $events.contains($evt)
-
+              root.found = $changes.contains($change)
           - switch:
               - check: root.found
                 processors:
@@ -75,14 +76,14 @@ tests:
                       name: "io_shono_processing"
                       labels:
                         app: "${APP_ID}"
-                        kind: "event"
-                        scope: "${!meta(\"io.shono.scope\")}"
-                        concept: "${!meta(\"io.shono.concept\")}"
-                        event: "${!meta(\"io.shono.event\")}"
+                        kind: "cdc"
+                        operation: "${!this.operation}"
+                        table: "${!this.table}"
+                        db: "${!this.db}"
               - processors:
                   - metric:
                       type: counter
                       name: "io_shono_filtered"
                       labels:
                         app: "${APP_ID}"
-                        kind: "event"
+                        kind: "cdc"

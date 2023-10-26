@@ -10,6 +10,9 @@ fields:
   - name: key
     type: string
     description: the dot path to the field containing the key
+  - name: scope
+    type: string
+    description: the scope
   - name: concept
     type: string
     description: the concept
@@ -31,22 +34,48 @@ mapping: |-
   }
   
   root.branch.processors = []
-  root.branch.processors."-" = this.apply("kv_set")
+  root.branch.processors."-".try = [
+    this.apply("kv_set"),
+    {"metric": { "type": "counter", "name": "io_shono_concept_stored", "labels": { "app": "${APP_ID}", "kind": "state", "scope": this.scope, "concept": this.concept } }}
+  ]
+  root.branch.processors."-".catch = [
+    {"metric": { "type": "counter", "name": "io_shono_concept_store_failed", "labels": { "app": "${APP_ID}", "kind": "state", "scope": this.scope, "concept": this.concept } }}
+  ]
 
 tests:
   - name: Should generate template
     config:
       redis: ${REDIS_URL}/4
+      scope: "exact"
       key: this.code
       concept: "appellation"
     expected:
       branch:
         processors:
-          - redis:
-              url: ${REDIS_URL}/4
-              command: set
-              args_mapping: |-
-                root = [
-                  "appellation:%s".format(this.code.escape_url_query()),
-                  this.format_json()
-                ]
+          - try:
+            - redis:
+                url: ${REDIS_URL}/4
+                command: set
+                args_mapping: |-
+                  root = [
+                    "appellation:%s".format(this.code.escape_url_query()),
+                    this.format_json()
+                  ]
+
+            - metric:
+                type: counter
+                name: "io_shono_concept_stored"
+                labels:
+                  app: "${APP_ID}"
+                  kind: "state"
+                  scope: "exact"
+                  concept: "appellation"
+          - catch:
+              - metric:
+                  type: counter
+                  name: "io_shono_concept_store_failed"
+                  labels:
+                    app: "${APP_ID}"
+                    kind: "state"
+                    scope: "exact"
+                    concept: "appellation"
