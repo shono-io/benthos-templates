@@ -5,7 +5,12 @@ status: beta
 fields:
   - name: redis
     type: string
+    default: ${REDIS_URL}
     description: the redis url to use
+  - name: scope
+    type: string
+    default: ${APP_SCOPE}
+    description: the application scope
   - name: concept
     type: string
     description: the concept to depend on
@@ -18,7 +23,7 @@ mapping: |-
     root.label = "check_%s_dependency".format(this.concept)
     root.redis.url = this.redis
     root.redis.command = "get"
-    root.redis.args_mapping = """root = [ "dependencies:%s:%%s".format(this.key.escape_url_query()) ]""".format(this.concept)
+    root.redis.args_mapping = """root = [ "%s:dependencies:%s:%%s".format(this.key.escape_url_query()) ]""".format(this.scope, this.concept)
     root.redis.retries = 0
   }
   
@@ -44,6 +49,7 @@ tests:
   - name: Test
     config:
       redis: ${REDIS_URL}
+      scope: "exact"
       concept: "account"
       key: "this.AccountId"
     expected:
@@ -61,7 +67,7 @@ tests:
                   url: ${REDIS_URL}
                   command: get
                   args_mapping: |-
-                    root = [ "dependencies:account:%s".format(this.key.escape_url_query()) ]
+                    root = [ "exact:dependencies:account:%s".format(this.key.escape_url_query()) ]
                   retries: 0
               - mapping: |-
                   root.result = this

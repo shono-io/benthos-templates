@@ -5,6 +5,7 @@ status: beta
 fields:
   - name: scope
     type: string
+    default: ${APP_SCOPE}
     description: the scope to use for the event
   - name: key
     type: string

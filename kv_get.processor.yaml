@@ -6,29 +6,28 @@ description: get the value for a key from the key value store
 fields: 
   - name: redis
     type: string
+    default: "${REDIS_URL}"
     description: the redis url to use
   - name: key
     type: string
     description: the dot path to the field containing the key
+  - name: scope
+    type: string
+    default: "${APP_SCOPE}"
+    description: the scope
   - name: concept
     type: string
     description: the concept
   - name: result_map
     type: string
     description: the mapping to apply
-  - name: prefix
-    type: string
-    default: ""
-    description: the prefix to use for the key
 
 
 mapping: |-
   map kv_get {
-    let prefix = if this.prefix != "" { "%s:".format(this.prefix) } else { "" }
-  
     root.redis.url = this.redis
     root.redis.command = "get"
-    root.redis.args_mapping = """root = [ "%s%s:%%s".format(this.key.escape_url_query()) ]""".format($prefix, this.concept)
+    root.redis.args_mapping = """root = [ "%s:%s:%%s".format(this.key.escape_url_query()) ]""".format(this.scope, this.concept)
     root.redis.retries = 0
   }
   
@@ -55,6 +54,7 @@ tests:
     config:
       redis: ${REDIS_URL}/4
       key: this.code
+      scope: "exact"
       concept: "year"
       result_map: |-
         root.year = this
@@ -72,7 +72,7 @@ tests:
                 url: ${REDIS_URL}/4
                 command: get
                 args_mapping: |-
-                  root = [ "year:%s".format(this.key.escape_url_query()) ]
+                  root = [ "exact:year:%s".format(this.key.escape_url_query()) ]
                 retries: 0
             - mapping: |-
                 root.result = this

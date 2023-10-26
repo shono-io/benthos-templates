@@ -5,6 +5,7 @@ status: beta
 fields:
   - name: app
     type: string
+    default: ${APP_ID}
     description: the identifier of the app processing the event
   - name: key
     type: string

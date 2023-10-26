@@ -5,6 +5,7 @@ status: beta
 fields:
   - name: app
     type: string
+    default: ${APP_ID}
     description: the consumer group to use
   - name: topic
     type: string
