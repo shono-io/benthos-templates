@@ -3,46 +3,51 @@ type: processor
 status: beta
 description: set a key to a value in the key value store
 
-fields: 
-  - name: redis
-    type: string
-    default: "${REDIS_URL}"
-    description: the redis url to use
-  - name: key
-    type: string
-    description: the dot path to the field containing the key
-  - name: scope
-    type: string
-    default: "${APP_SCOPE}"
-    description: the scope
+fields:
   - name: concept
     type: string
     description: the concept
+  - name: key
+    type: string
+    description: the dot path to the field containing the key
+
+  - name: redis
+    type: string
+    default: ""
+    description: the redis url to use. Defaults to the application defined redis instance
+  - name: scope
+    type: string
+    default: ""
+    description: the scope in which to store the value. Defaults to the application scope
 
 mapping: |-
+  let appId = env("APP_ID")
+  let scope = if this.scope == "" { env("APP_SCOPE") } else { this.scope }
+  
   map kv_set {
-    root.redis.url = this.redis
+    let redis = if this.redis == "" { env("REDIS_URL") } else { this.redis }
+    let scope = if this.scope == "" { env("APP_SCOPE") } else { this.scope }
+  
+    root.redis.url = $redis
     root.redis.command = "set"
     root.redis.args_mapping = """root = [
     "%s:%s:%%s".format(%s.escape_url_query()),
     this.format_json()
-  ]""".format(this.scope, this.concept, this.key)
+  ]""".format($scope, this.concept, this.key)
   }
   
   root.branch.processors = []
   root.branch.processors."-".try = [
     this.apply("kv_set"),
-    {"metric": { "type": "counter", "name": "io_shono_concept_stored", "labels": { "app": "${APP_ID}", "kind": "state", "scope": this.scope, "concept": this.concept } }}
+    {"metric": { "type": "counter", "name": "io_shono_concept_stored", "labels": { "app": $appId, "kind": "state", "scope": $scope, "concept": this.concept } }}
   ]
   root.branch.processors."-".catch = [
-    {"metric": { "type": "counter", "name": "io_shono_concept_store_failed", "labels": { "app": "${APP_ID}", "kind": "state", "scope": this.scope, "concept": this.concept } }}
+    {"metric": { "type": "counter", "name": "io_shono_concept_store_failed", "labels": { "app": $appId, "kind": "state", "scope": $scope, "concept": this.concept } }}
   ]
 
 tests:
-  - name: Should generate template
+  - name: Should fall back to environment vars when config not specified
     config:
-      redis: ${REDIS_URL}/4
-      scope: "exact"
       key: this.code
       concept: "appellation"
     expected:
@@ -50,11 +55,11 @@ tests:
         processors:
           - try:
             - redis:
-                url: ${REDIS_URL}/4
+                url: redis://my-redis-server:6379
                 command: set
                 args_mapping: |-
                   root = [
-                    "exact:appellation:%s".format(this.code.escape_url_query()),
+                    "my-scope:appellation:%s".format(this.code.escape_url_query()),
                     this.format_json()
                   ]
 
@@ -62,16 +67,53 @@ tests:
                 type: counter
                 name: "io_shono_concept_stored"
                 labels:
-                  app: "${APP_ID}"
+                  app: my-app
                   kind: "state"
-                  scope: "exact"
+                  scope: "my-scope"
                   concept: "appellation"
           - catch:
               - metric:
                   type: counter
                   name: "io_shono_concept_store_failed"
                   labels:
-                    app: "${APP_ID}"
+                    app: my-app
                     kind: "state"
-                    scope: "exact"
+                    scope: "my-scope"
+                    concept: "appellation"
+
+  - name: Should define configured fields
+    config:
+      redis: redis://my-other-redis-server:6379
+      scope: "my-other-scope"
+      key: this.code
+      concept: "appellation"
+    expected:
+      branch:
+        processors:
+          - try:
+              - redis:
+                  url: redis://my-other-redis-server:6379
+                  command: set
+                  args_mapping: |-
+                    root = [
+                      "my-other-scope:appellation:%s".format(this.code.escape_url_query()),
+                      this.format_json()
+                    ]
+
+              - metric:
+                  type: counter
+                  name: "io_shono_concept_stored"
+                  labels:
+                    app: my-app
+                    kind: "state"
+                    scope: "my-other-scope"
+                    concept: "appellation"
+          - catch:
+              - metric:
+                  type: counter
+                  name: "io_shono_concept_store_failed"
+                  labels:
+                    app: my-app
+                    kind: "state"
+                    scope: "my-other-scope"
                     concept: "appellation"

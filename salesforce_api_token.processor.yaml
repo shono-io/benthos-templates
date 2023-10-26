@@ -6,23 +6,30 @@ fields:
   - name: cache
     type: string
     description: the cache to use for storing the token
+
   - name: cache_key
     type: string
+    default: "salesforce_api_token"
     description: the key to use when storing the token in the cache
   - name: base_url
     type: string
+    default: ""
     description: the salesforce base url
   - name: client_id
     type: string
+    default: ""
     description: the salesforce client id
   - name: client_secret
     type: string
+    default: ""
     description: the salesforce client secret
   - name: username
     type: string
+    default: ""
     description: the salesforce username
   - name: password
     type: string
+    default: ""
     description: the salesforce password
 
 mapping: |-
@@ -80,13 +87,18 @@ mapping: |-
   }
   
   map map_auth_request_body {
+    let client_id = if this.client_id == "" { env("SALESFORCE_CLIENT_KEY") } else { this.client_id }
+    let client_secret = if this.client_secret == "" { env("SALESFORCE_CLIENT_SECRET") } else { this.client_secret }
+    let username = if this.username == "" { env("SALESFORCE_USERNAME") } else { this.username }
+    let password = if this.password == "" { env("SALESFORCE_PASSWORD") } else { this.password }
+  
     root.mapping = """root.grant_type = "password"
   root.client_id = %q
   root.client_secret = %q
   root.username = %q
   root.password = %q
 
-  root = root.key_values().map_each(kv -> "%%s=%%s".format(kv.key, kv.value)).join("&")""".format(this.client_id, this.client_secret, this.username, this.password)
+  root = root.key_values().map_each(kv -> "%%s=%%s".format(kv.key, kv.value)).join("&")""".format($client_id, $client_secret, $username, $password)
   }
   
   map map_try_auth {
@@ -98,7 +110,9 @@ mapping: |-
   }
   
   map auth_request {
-    root.http.url = "%s/services/oauth2/token".format(this.base_url)
+    let url = if this.base_url == "" { env("SALESFORCE_BASE_URL") } else { this.base_url } 
+  
+    root.http.url = "%s/services/oauth2/token".format($url)
     root.http.verb = "POST"
     root.http.headers."Content-Type" = "application/x-www-form-urlencoded"
   }
@@ -119,7 +133,7 @@ mapping: |-
   
 
 tests:
-  - name: Test With Kafka
+  - name: Should use configured fields
     config:
       cache: token_cache
       cache_key: salesforce_api_token
@@ -192,6 +206,83 @@ tests:
                         processors:
                           - cache:
                               resource: token_cache
+                              operator: set
+                              key: salesforce_api_token
+                              value: ${! this }
+
+              result_map: |-
+                root.resolved_token = this
+
+        result_map: |-
+          root = this.resolved_token.access_token
+
+  - name: Should fall back to environment variables if config not defined
+    config:
+      cache: tokens
+    expected:
+      branch:
+        processors:
+          # First try to retrieve the token from the cache
+          - branch:
+              processors:
+                - try:
+                    # get the token from the token cache
+                    - cache:
+                        resource: tokens
+                        operator: get
+                        key: salesforce_api_token
+
+                    # check if the token is outdated
+                    - mapping: |-
+                        let expiration = (2 * 60 * 60 * 1000) - (5 * 60 * 1000) # 2 hours - 5 minutes
+
+                        root = if (now().ts_unix_milli() - this.issued_at.uint64() > $expiration) {
+                          throw("token expired")
+                        }
+                    - mapping: root.resolved_token = this
+
+                    - log:
+                        level: "DEBUG"
+                        message: "Valid token retrieved from cache"
+                - catch:
+                    - mapping: root.resolved_token = null
+
+              result_map: |-
+                root.resolved_token = this.resolved_token.or(deleted())
+
+          # Only if the token could not have resolved, we will look for a new token
+          - branch:
+              request_map: |-
+                root = if this.exists("resolved_token") { deleted() } else { this }
+              processors:
+                - log:
+                    level: "DEBUG"
+                    message: "Token NOT found or expired, getting a new one"
+
+                - mapping: |-
+                    root.grant_type = "password"
+                    root.client_id = "salesforce_client_key"
+                    root.client_secret = "salesforce_client_secret"
+                    root.username = "salesforce_username"
+                    root.password = "salesforce_password"
+
+                    root = root.key_values().map_each(kv -> "%s=%s".format(kv.key, kv.value)).join("&")
+
+                - try:
+                    - http:
+                        url: "https://my-salesforce-instance.my.salesforce.com/services/oauth2/token"
+                        verb: POST
+                        headers:
+                          Content-Type: "application/x-www-form-urlencoded"
+
+                    - log:
+                        level: "DEBUG"
+                        message: "Token retrieved, caching it"
+
+                    - branch:
+                        processors:
+                          - cache:
+                              resource: tokens
                               operator: set
                               key: salesforce_api_token
                               value: ${! this }

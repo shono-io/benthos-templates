@@ -3,14 +3,6 @@ type: processor
 status: beta
 
 fields:
-  - name: redis
-    type: string
-    default: "${REDIS_URL}"
-    description: the redis url to use
-  - name: scope
-    type: string
-    default: "${APP_SCOPE}"
-    description: the processing scope
   - name: concept
     type: string
     description: the concept of the current message
@@ -18,25 +10,37 @@ fields:
     type: string
     description: the expression to retrieve the key from the current message
 
+  - name: redis
+    type: string
+    default: ""
+    description: the redis url to use
+  - name: scope
+    type: string
+    default: ""
+    description: the processing scope
+
 mapping: |-
   map kv_set {
+    let redis = if this.redis == "" { env("REDIS_URL") } else { this.redis }
+    let scope = if this.scope == "" { env("APP_SCOPE") } else { this.scope }
+  
     root.label = "flag_%s_as_processed".format(this.concept)
-    root.redis.url = this.redis
+    root.redis.url = $redis
     root.redis.command = "set"
     root.redis.args_mapping = """root = [
     "%s:dependencies:%s:%%s".format(%s.escape_url_query()),
     now()
-  ]""".format(this.scope, this.concept, this.key)
+  ]""".format($scope, this.concept, this.key)
   }
   
   root.branch.processors = []
   root.branch.processors."-" = this.apply("kv_set")
 
 tests:
-  - name: Test
+  - name: Should use configured fields
     config:
-      redis: ${REDIS_URL}
-      scope: "exact"
+      redis: redis://my-other-redis-server:6379
+      scope: "my-other-scope"
       concept: "account"
       key: "this.AccountId"
     expected:
@@ -44,10 +48,26 @@ tests:
         processors:
           - label: flag_account_as_processed
             redis:
-              url: ${REDIS_URL}
+              url: redis://my-other-redis-server:6379
               command: set
               args_mapping: |-
                 root = [
-                  "exact:dependencies:account:%s".format(this.AccountId.escape_url_query()),
+                  "my-other-scope:dependencies:account:%s".format(this.AccountId.escape_url_query()),
+                  now()
+                ]
+  - name: Should fall back to environment vars when config not specified
+    config:
+      concept: "account"
+      key: "this.AccountId"
+    expected:
+      branch:
+        processors:
+          - label: flag_account_as_processed
+            redis:
+              url: redis://my-redis-server:6379
+              command: set
+              args_mapping: |-
+                root = [
+                  "my-scope:dependencies:account:%s".format(this.AccountId.escape_url_query()),
                   now()
                 ]

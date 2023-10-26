@@ -5,16 +5,17 @@ status: beta
 fields:
   - name: scope
     type: string
-    default: ${APP_SCOPE}
+    default: ""
     description: the scope to use for the event
   - name: key
     type: string
     default: "meta(\"io.shono.key\")"
     description: the dot path to the field to use as the document id
-  - name: url
+  - name: brokers
+    kind: list
     type: string
     default: ""
-    description: the kafka url to use
+    description: the kafka brokers to connect to
   - name: username
     type: string
     default: ""
@@ -30,40 +31,64 @@ fields:
 
 
 mapping: |-
-  root.kafka_franz.seed_brokers = if this.url == "" { env("BACKBONE_KAFKA_URL").split(",") } else { [this.url] }
+  let brokers = if this.brokers.or([]).length() == 0 { env("BACKBONE_KAFKA_URL").or("").split(",") } else { this.brokers }
+  let username = if this.username == "" { env("BACKBONE_KAFKA_USERNAME") } else { this.username }
+  let password = if this.password == "" { env("BACKBONE_KAFKA_PASSWORD") } else { this.password }
+  let scope = if this.scope == "" { env("APP_SCOPE") } else { this.scope }
+  
+  root.kafka_franz.seed_brokers = $brokers
   root.kafka_franz.sasl = [
     {
       "mechanism": "PLAIN",
-      "username": if this.username == "" { env("BACKBONE_KAFKA_USERNAME") } else { this.username },
-      "password": if this.password == "" { env("BACKBONE_KAFKA_PASSWORD") } else { this.password }
+      "username": $username,
+      "password": $password
     }
   ]
   root.kafka_franz.tls.enabled = true
-  root.kafka_franz.topic = this.scope
+  root.kafka_franz.topic = $scope
   root.kafka_franz.metadata.include_patterns = [ this.headers ]
   root.kafka_franz.key = "${!%s}".format(this.key)
 
 
 tests:
-  - name: Test With Kafka
+  - name: Should use configured fields
     config:
-      scope: govuk
+      scope: hr
       key: this.id
-      url: localhost:9092
-      username: kafka
-      password: changeme
+      brokers:
+        - mybroker:9092
+      username: myuser
+      password: mypass
     expected:
       kafka_franz:
         seed_brokers:
-          - localhost:9092
+          - mybroker:9092
         sasl:
           - mechanism: PLAIN
-            username: kafka
-            password: changeme
+            username: myuser
+            password: mypass
         tls:
           enabled: true
-        topic: govuk
+        topic: hr
         metadata:
           include_patterns:
             - "io.shono..*"
         key: "${!this.id}"
+
+  - name: Should fall back to environment variables if config not defined
+    config: {}
+    expected:
+      kafka_franz:
+        seed_brokers:
+          - my-kafka-broker:9092
+        sasl:
+          - mechanism: PLAIN
+            username: kafka_username
+            password: kafka_password
+        tls:
+          enabled: true
+        topic: my-scope
+        metadata:
+          include_patterns:
+            - "io.shono..*"
+        key: ${!meta("io.shono.key")}

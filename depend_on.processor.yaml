@@ -3,14 +3,6 @@ type: processor
 status: beta
 
 fields:
-  - name: redis
-    type: string
-    default: ${REDIS_URL}
-    description: the redis url to use
-  - name: scope
-    type: string
-    default: ${APP_SCOPE}
-    description: the application scope
   - name: concept
     type: string
     description: the concept to depend on
@@ -18,12 +10,24 @@ fields:
     type: string
     description: the key to depend on
 
+  - name: redis
+    type: string
+    default: ""
+    description: the redis url to use
+  - name: scope
+    type: string
+    default: ""
+    description: the application scope
+
 mapping: |-
   map kv_get {
+    let redis = if this.redis == "" { env("REDIS_URL") } else { this.redis }
+    let scope = if this.scope == "" { env("APP_SCOPE") } else { this.scope }
+  
     root.label = "check_%s_dependency".format(this.concept)
-    root.redis.url = this.redis
+    root.redis.url = $redis
     root.redis.command = "get"
-    root.redis.args_mapping = """root = [ "%s:dependencies:%s:%%s".format(this.key.escape_url_query()) ]""".format(this.scope, this.concept)
+    root.redis.args_mapping = """root = [ "%s:dependencies:%s:%%s".format(this.key.escape_url_query()) ]""".format($scope, this.concept)
     root.redis.retries = 0
   }
   
@@ -46,9 +50,9 @@ mapping: |-
   root = if this.found { root } else { throw("account %%s dependency not found".format(%s)) }""".format(this.key)
 
 tests:
-  - name: Test
+  - name: Should use configured fields
     config:
-      redis: ${REDIS_URL}
+      redis: redis://my-other-redis-server:6379
       scope: "exact"
       concept: "account"
       key: "this.AccountId"
@@ -64,10 +68,43 @@ tests:
           - try:
               - label: "check_account_dependency"
                 redis:
-                  url: ${REDIS_URL}
+                  url: redis://my-other-redis-server:6379
                   command: get
                   args_mapping: |-
                     root = [ "exact:dependencies:account:%s".format(this.key.escape_url_query()) ]
+                  retries: 0
+              - mapping: |-
+                  root.result = this
+                  root.found = true
+
+          - catch:
+              - mapping: |-
+                  root.result = null
+                  root.found = false
+        result_map: |-
+          meta err_code = if this.found { deleted() } else { "DEPENDENCY_NOT_FOUND" }
+          root = if this.found { root } else { throw("account %s dependency not found".format(this.AccountId)) }
+
+  - name: Should fall back to environment vars when config not specified
+    config:
+      concept: "account"
+      key: "this.AccountId"
+    expected:
+      branch:
+        request_map: |-
+          root = if this.AccountId.or("").string().trim().length() == 0 { 
+            deleted() 
+          } else { 
+            {"key": this.AccountId} 
+          }
+        processors:
+          - try:
+              - label: "check_account_dependency"
+                redis:
+                  url: redis://my-redis-server:6379
+                  command: get
+                  args_mapping: |-
+                    root = [ "my-scope:dependencies:account:%s".format(this.key.escape_url_query()) ]
                   retries: 0
               - mapping: |-
                   root.result = this

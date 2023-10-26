@@ -3,50 +3,93 @@ type: input
 status: beta
 
 fields:
-  - name: app
+  - name: scopes
+    kind: list
     type: string
-    default: ${APP_ID}
+    description: the scopes to listen for row changes. For each scope there is expected to be a <scope>.row_changes topic
+
+  - name: group
+    type: string
+    default: ""
     description: the consumer group to use
-  - name: topic
+
+  - name: brokers
+    kind: list
     type: string
-    description: the topic containing the row changes
-  - name: debug
-    type: bool
-    default: false
-    description: whether to enable debug logging
+    default: ""
+    description: the kafka brokers to connect to
+
+  - name: username
+    type: string
+    default: ""
+    description: the kafka username
+
+  - name: password
+    type: string
+    default: ""
+    description: the kafka password
 
 mapping: |-
-  map with_kafka {  
-    root.kafka_franz.seed_brokers = [ env("BACKBONE_KAFKA_URL") ]
-    root.kafka_franz.sasl = [
-      {
-        "mechanism": "PLAIN",
-        "username": env("BACKBONE_KAFKA_USERNAME"),
-        "password": env("BACKBONE_KAFKA_PASSWORD")
-      }
-    ]
-    root.kafka_franz.tls.enabled = true
-    root.kafka_franz.consumer_group = this.app
-    root.kafka_franz.topics = [ this.topic ]
-  }
+  let brokers = if this.brokers.or([]).length() == 0 { env("BACKBONE_KAFKA_URL").or("").split(",") } else { this.brokers }
+  let username = if this.username == "" { env("BACKBONE_KAFKA_USERNAME") } else { this.username }
+  let password = if this.password == "" { env("BACKBONE_KAFKA_PASSWORD") } else { this.password }
+  let group = if this.group == "" { env("APP_ID") } else { this.group }
   
-  root = this.apply("with_kafka")
+  root.kafka_franz.seed_brokers = $brokers
+  root.kafka_franz.sasl = [
+    {
+      "mechanism": "PLAIN",
+      "username": $username,
+      "password": $password
+    }
+  ]
+  root.kafka_franz.tls.enabled = true
+  root.kafka_franz.consumer_group = $group
+  
+  root.kafka_franz.topics = this.scopes.map_each(i -> "%s.row_changes".format(i))
 
 tests:
-  - name: Test With Kafka
+  - name: Should use configured fields
     config:
-      app: companies_injector
-      topic: exact.row_changes
+      scopes:
+        - hr
+        - iam
+      group: user_cdc
+      brokers:
+        - mybroker:9092
+      username: myuser
+      password: mypass
     expected:
-        kafka_franz:
-            seed_brokers:
-              -
-            sasl:
-              - mechanism: PLAIN
-                username:
-                password:
-            tls:
-              enabled: true
-            consumer_group: companies_injector
-            topics:
-              - exact.row_changes
+      kafka_franz:
+        seed_brokers:
+          - mybroker:9092
+        sasl:
+          - mechanism: PLAIN
+            username: myuser
+            password: mypass
+        tls:
+          enabled: true
+        consumer_group: user_cdc
+        topics:
+          - hr.row_changes
+          - iam.row_changes
+
+  - name: Should fall back to environment variables if config not defined
+    config:
+      scopes:
+        - hr
+        - iam
+    expected:
+      kafka_franz:
+        seed_brokers:
+          - my-kafka-broker:9092
+        sasl:
+          - mechanism: PLAIN
+            username: kafka_username
+            password: kafka_password
+        tls:
+          enabled: true
+        consumer_group: my-app
+        topics:
+          - hr.row_changes
+          - iam.row_changes
