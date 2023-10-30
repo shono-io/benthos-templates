@@ -17,8 +17,7 @@ mapping: |-
     } else {
       "unknown"
     }
-    root = this
-    root.found = $changes.contains($change)""".format(this.events.format_json(no_indent: true))
+    root = if $changes.contains($change) { this } else {deleted()}""".format(this.events.format_json(no_indent: true))
   }
   
   map metric {
@@ -68,8 +67,7 @@ tests:
               } else {
                 "unknown"
               }
-              root = this
-              root.found = $changes.contains($change)
+              root = if $changes.contains($change) { this } else {deleted()}
           - switch:
               - check: this.found
                 processors:
