@@ -81,6 +81,7 @@ tests:
 
           - catch:
               - mapping: |-
+                  meta errCode = "DEPENDENCY_NOT_FOUND"
                   root = throw("no year found with key %q".format(this.key))
 
         result_map: |-
