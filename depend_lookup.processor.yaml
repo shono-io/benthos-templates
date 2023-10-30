@@ -1,0 +1,114 @@
+name: depend_lookup
+type: processor
+status: beta
+description: get the value for a key from the key value store
+
+fields:
+  - name: key
+    type: string
+    description: the dot path to the field containing the key
+  - name: concept
+    type: string
+    description: the concept
+
+  - name: result_map
+    type: string
+    default: "root = this.result"
+    description: the mapping to apply
+  - name: scope
+    type: string
+    default: ""
+    description: the scope from which the key needs to be retrieved
+  - name: redis
+    type: string
+    default: ""
+    description: the redis url to use
+
+
+mapping: |-
+  map kv_get {
+    let redis = if this.redis == "" { env("REDIS_URL") } else { this.redis }
+    let scope = if this.scope == "" { env("APP_SCOPE") } else { this.scope }
+  
+    root.redis.url = $redis
+    root.redis.command = "get"
+    root.redis.args_mapping = """root = [ "%s:%s:%%s".format(this.key.escape_url_query()) ]""".format($scope, this.concept)
+    root.redis.retries = 0
+  }
+  
+  root.branch.request_map = """root = if %[1]s.or("").string().trim().length() == 0 { 
+    deleted() 
+  } else { 
+    {"key": %[1]s} 
+  }""".format(this.key)
+  root.branch.processors = []
+  root.branch.processors."-".try = []
+  root.branch.processors."0".try."-" = this.apply("kv_get")
+  root.branch.processors."0".try."-".mapping = """root = this.parse_json()"""
+  
+  root.branch.processors."-".catch = []
+  root.branch.processors."1".catch."-".mapping = """root = throw("no %s found with key %%q".format(this.key))""".format(this.concept)
+  
+  root.branch.result_map = this.result_map
+  
+
+tests:
+  - name: Should use configured fields
+    config:
+      redis: redis://my-other-redis-server:6379
+      key: this.code
+      scope: exact
+      concept: year
+      result_map: |-
+        root.year = this
+    expected:
+      branch:
+        request_map: |-
+          root = if this.code.or("").string().trim().length() == 0 { 
+            deleted() 
+          } else { 
+            {"key": this.code} 
+          }
+        processors:
+          - try:
+            - redis:
+                url: redis://my-other-redis-server:6379
+                command: get
+                args_mapping: |-
+                  root = [ "exact:year:%s".format(this.key.escape_url_query()) ]
+                retries: 0
+            - mapping: root = this.parse_json()
+
+          - catch:
+              - mapping: |-
+                  root = throw("no year found with key %q".format(this.key))
+
+        result_map: |-
+          root.year = this
+
+  - name: Should fall back to environment variables if config not defined
+    config:
+      key: this.code
+      concept: year
+    expected:
+      branch:
+        request_map: |-
+          root = if this.code.or("").string().trim().length() == 0 { 
+            deleted() 
+          } else { 
+            {"key": this.code} 
+          }
+        processors:
+          - try:
+              - redis:
+                  url: redis://my-redis-server:6379
+                  command: get
+                  args_mapping: |-
+                    root = [ "my-scope:year:%s".format(this.key.escape_url_query()) ]
+                  retries: 0
+              - mapping: root = this.parse_json()
+
+          - catch:
+              - mapping: |-
+                  root = throw("no year found with key %q".format(this.key))
+        result_map: root = this.result
