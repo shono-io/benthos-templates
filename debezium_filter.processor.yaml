@@ -3,10 +3,10 @@ type: processor
 status: beta
 
 fields:
-  - name: changes
+  - name: events
     kind: list
     type: string
-    description: the changes to listen for in the format <table>:<change>
+    description: the events to listen for in the format <table>:<change>
 
 mapping: |-
   map filter {
@@ -17,12 +17,13 @@ mapping: |-
     } else {
       "unknown"
     }
+    root = this
     root.found = $changes.contains($change)""".format(this.events.format_json(no_indent: true))
   }
   
   map metric {
     root.switch = [
-      {"check": "root.found", "processors": [this.apply("metric_processing")]},
+      {"check": "this.found", "processors": [this.apply("metric_processing")]},
       {"processors": [this.apply("metric_filtered")]}
     ]
   }
@@ -67,9 +68,10 @@ tests:
               } else {
                 "unknown"
               }
+              root = this
               root.found = $changes.contains($change)
           - switch:
-              - check: root.found
+              - check: this.found
                 processors:
                   - metric:
                       type: counter
