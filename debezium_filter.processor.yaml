@@ -20,13 +20,6 @@ mapping: |-
     root = if $changes.contains($change) { this } else {deleted()}""".format(this.events.format_json(no_indent: true))
   }
   
-  map metric {
-    root.switch = [
-      {"check": "this.found", "processors": [this.apply("metric_processing")]},
-      {"processors": [this.apply("metric_filtered")]}
-    ]
-  }
-  
   map metric_processing {
     root.metric.type = "counter"
     root.metric.name = "io_shono_processing"
@@ -37,16 +30,9 @@ mapping: |-
     root.metric.labels.db = "${!this.db}"
   }
   
-  map metric_filtered {
-    root.metric.type = "counter"
-    root.metric.name = "io_shono_filtered"
-    root.metric.labels.app = "${APP_ID}"
-    root.metric.labels.kind = "cdc"
-  }
-  
-  root.branch.processors = [
+  root.try = [
     this.apply("filter"),
-    this.apply("metric")
+    this.apply("metric_processing"),
   ]
 
 tests:
@@ -58,32 +44,21 @@ tests:
         - cicmpy:updated
         - cicmpy:imported
     expected:
-      branch:
-        processors:
-          - mapping: |-
-              let changes = ["cicmpy:created","cicmpy:updated","cicmpy:imported"]
-              let change = if content().length() != 0 {
-                "%s:%s".format(this.table, this.operation)
-              } else {
-                "unknown"
-              }
-              root = if $changes.contains($change) { this } else {deleted()}
-          - switch:
-              - check: this.found
-                processors:
-                  - metric:
-                      type: counter
-                      name: "io_shono_processing"
-                      labels:
-                        app: "${APP_ID}"
-                        kind: "cdc"
-                        operation: "${!this.operation}"
-                        table: "${!this.table}"
-                        db: "${!this.db}"
-              - processors:
-                  - metric:
-                      type: counter
-                      name: "io_shono_filtered"
-                      labels:
-                        app: "${APP_ID}"
-                        kind: "cdc"
+      try:
+        - mapping: |-
+            let changes = ["cicmpy:created","cicmpy:updated","cicmpy:imported"]
+            let change = if content().length() != 0 {
+              "%s:%s".format(this.table, this.operation)
+            } else {
+              "unknown"
+            }
+            root = if $changes.contains($change) { this } else {deleted()}
+        - metric:
+            type: counter
+            name: "io_shono_processing"
+            labels:
+              app: "${APP_ID}"
+              kind: "cdc"
+              operation: "${!this.operation}"
+              table: "${!this.table}"
+              db: "${!this.db}"
