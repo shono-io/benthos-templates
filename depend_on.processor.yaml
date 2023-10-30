@@ -43,7 +43,7 @@ mapping: |-
   root.branch.processors."-".catch = []
   root.branch.processors."1".catch."-".mapping = """meta err_code = "DEPENDENCY_NOT_FOUND"
   meta err_msg = "no %s found with key %%q".format(this.key)
-  root = throw(@errMsg)""".format(this.concept)
+  root = throw(@err_msg)""".format(this.concept)
 
 tests:
   - name: Should use configured fields
@@ -74,7 +74,7 @@ tests:
               - mapping: |-
                   meta err_code = "DEPENDENCY_NOT_FOUND"
                   meta err_msg = "no account found with key %q".format(this.key)
-                  root = throw(@errMsg)
+                  root = throw(@err_msg)
 
   - name: Should fall back to environment vars when config not specified
     config:
@@ -102,4 +102,4 @@ tests:
               - mapping: |-
                   meta err_code = "DEPENDENCY_NOT_FOUND"
                   meta err_msg = "no account found with key %q".format(this.key)
-                  root = throw(@errMsg)
+                  root = throw(@err_msg)
