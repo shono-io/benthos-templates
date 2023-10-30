@@ -95,7 +95,7 @@ mapping: |-
   root.switch.cases.0.output = this.apply("error_output")
   
   root.switch.cases."-".check = "errored() && meta(\"err_code\") == \"DEPENDENCY_NOT_FOUND\""
-  root.switch.cases.1.output = { "label": "dependency_not_found", "reject": "${! error() }" }
+  root.switch.cases.1.output = { "label": "dependency_not_found", "reject": "${! meta(\"err_msg\") }; rejecting to retry later" }
   
   root.switch.cases."-".output = this.output
   root.switch.cases.2.output.label = "output"
@@ -151,7 +151,7 @@ tests:
           - check: errored() && meta("err_code") == "DEPENDENCY_NOT_FOUND"
             output:
               label: dependency_not_found
-              reject: "${! error() }"
+              reject: "${! meta(\"err_msg\") }; rejecting to retry later"
           - output:
               label: output
               stdout: { }
@@ -199,7 +199,7 @@ tests:
           - check: errored() && meta("err_code") == "DEPENDENCY_NOT_FOUND"
             output:
               label: dependency_not_found
-              reject: "${! error() }"
+              reject: "${! meta(\"err_msg\") }; rejecting to retry later"
           - output:
               label: output
               stdout: { }
@@ -253,7 +253,7 @@ tests:
           - check: errored() && meta("err_code") == "DEPENDENCY_NOT_FOUND"
             output:
               label: dependency_not_found
-              reject: "${! error() }"
+              reject: "${! meta(\"err_msg\") }; rejecting to retry later"
 
           - output:
               label: output

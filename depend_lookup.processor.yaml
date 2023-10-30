@@ -47,7 +47,9 @@ mapping: |-
   root.branch.processors."0".try."-".mapping = """root = this.parse_json()"""
   
   root.branch.processors."-".catch = []
-  root.branch.processors."1".catch."-".mapping = """root = throw("no %s found with key %%q".format(this.key))""".format(this.concept)
+  root.branch.processors."1".catch."-".mapping = """meta err_code = "DEPENDENCY_NOT_FOUND"
+  meta err_msg = "no %s found with key %%q".format(this.key)
+  root = throw(@errMsg)""".format(this.concept)
   
   root.branch.result_map = this.result_map
   
@@ -81,8 +83,9 @@ tests:
 
           - catch:
               - mapping: |-
-                  meta errCode = "DEPENDENCY_NOT_FOUND"
-                  root = throw("no year found with key %q".format(this.key))
+                  meta err_code = "DEPENDENCY_NOT_FOUND"
+                  meta err_msg = "no year found with key %q".format(this.key)
+                  root = throw(@errMsg)
 
         result_map: |-
           root.year = this
@@ -111,5 +114,7 @@ tests:
 
           - catch:
               - mapping: |-
-                  root = throw("no year found with key %q".format(this.key))
+                  meta err_code = "DEPENDENCY_NOT_FOUND"
+                  meta err_msg = "no year found with key %q".format(this.key)
+                  root = throw(@errMsg)
         result_map: root = this.result

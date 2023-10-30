@@ -39,15 +39,11 @@ mapping: |-
   root.branch.processors = []
   root.branch.processors."-".try = []
   root.branch.processors."0".try."-" = this.apply("kv_get")
-  root.branch.processors."0".try."-".mapping = """root.result = this
-  root.found = true"""
   
   root.branch.processors."-".catch = []
-  root.branch.processors."1".catch."-".mapping = """root.result = null
-  root.found = false"""
-  
-  root.branch.result_map = """meta err_code = if this.found { deleted() } else { "DEPENDENCY_NOT_FOUND" }
-  root = if this.found { root } else { throw("account %%s dependency not found".format(%s)) }""".format(this.key)
+  root.branch.processors."1".catch."-".mapping = """meta err_code = "DEPENDENCY_NOT_FOUND"
+  meta err_msg = "no %s found with key %%q".format(this.key)
+  root = throw(@errMsg)""".format(this.concept)
 
 tests:
   - name: Should use configured fields
@@ -73,17 +69,12 @@ tests:
                   args_mapping: |-
                     root = [ "exact:dependencies:account:%s".format(this.key.escape_url_query()) ]
                   retries: 0
-              - mapping: |-
-                  root.result = this
-                  root.found = true
 
           - catch:
               - mapping: |-
-                  root.result = null
-                  root.found = false
-        result_map: |-
-          meta err_code = if this.found { deleted() } else { "DEPENDENCY_NOT_FOUND" }
-          root = if this.found { root } else { throw("account %s dependency not found".format(this.AccountId)) }
+                  meta err_code = "DEPENDENCY_NOT_FOUND"
+                  meta err_msg = "no account found with key %q".format(this.key)
+                  root = throw(@errMsg)
 
   - name: Should fall back to environment vars when config not specified
     config:
@@ -106,14 +97,9 @@ tests:
                   args_mapping: |-
                     root = [ "my-scope:dependencies:account:%s".format(this.key.escape_url_query()) ]
                   retries: 0
-              - mapping: |-
-                  root.result = this
-                  root.found = true
 
           - catch:
               - mapping: |-
-                  root.result = null
-                  root.found = false
-        result_map: |-
-          meta err_code = if this.found { deleted() } else { "DEPENDENCY_NOT_FOUND" }
-          root = if this.found { root } else { throw("account %s dependency not found".format(this.AccountId)) }
+                  meta err_code = "DEPENDENCY_NOT_FOUND"
+                  meta err_msg = "no account found with key %q".format(this.key)
+                  root = throw(@errMsg)
