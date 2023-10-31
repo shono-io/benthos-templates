@@ -1,105 +1,195 @@
 name: depend_on
 type: processor
 status: beta
-
 fields:
-  - name: concept
-    type: string
-    description: the concept to depend on
   - name: key
     type: string
-    description: the key to depend on
+    description: the dot path to the field containing the key
+  - name: concept
+    type: string
+    description: the concept
 
+  - name: result_map
+    type: string
+    default: ""
+    description: the mapping to apply
+  - name: scope
+    type: string
+    default: ""
+    description: the scope from which the key needs to be retrieved
   - name: redis
     type: string
     default: ""
     description: the redis url to use
-  - name: scope
+  - name: mock_redis
     type: string
     default: ""
-    description: the application scope
+    description: the mapping to apply instead of getting the record from redis
+
 
 mapping: |-
   map kv_get {
     let redis = if this.redis == "" { env("REDIS_URL") } else { this.redis }
     let scope = if this.scope == "" { env("APP_SCOPE") } else { this.scope }
   
-    root.label = "check_%s_dependency".format(this.concept)
     root.redis.url = $redis
     root.redis.command = "get"
-    root.redis.args_mapping = """root = [ "%s:dependencies:%s:%%s".format(this.key.escape_url_query()) ]""".format($scope, this.concept)
+    root.redis.args_mapping = """root = [ "%s:%s:%%s".format(this.key.escape_url_query()) ]""".format($scope, this.concept)
     root.redis.retries = 0
   }
   
-  root.branch.request_map = """root = if %[1]s.or("").string().trim().length() == 0 { 
+  map kv_get_mock {
+    root.mapping = this.mock_redis
+  }
+  
+  map map_branch {
+    root.branch.request_map = """root = if %[1]s.or("").string().trim().length() == 0 { 
     deleted() 
   } else { 
     {"key": %[1]s} 
   }""".format(this.key)
-  root.branch.processors = []
-  root.branch.processors."-".try = []
-  root.branch.processors."0".try."-" = this.apply("kv_get")
+    root.branch.processors = []
+    root.branch.processors."-".try = []
+    root.branch.processors."0".try."-" = if this.mock_redis == "" {this.apply("kv_get")} else { this.apply("kv_get_mock") }
+    root.branch.processors."0".try."-".mapping = """root = this.parse_json()"""
   
-  root.branch.processors."-".catch = []
-  root.branch.processors."1".catch."-".mapping = """meta err_code = "DEPENDENCY_NOT_FOUND"
-  meta err_msg = "no %s found with key %%q".format(this.key)
-  root = throw("%%s: %%s".format(@err_code, @err_msg))""".format(this.concept)
+    root.branch.processors."-".catch = []
+    root.branch.processors."1".catch."-".mapping = """meta err_code = "DEPENDENCY_NOT_FOUND"
+  meta err_msg = "no %s found with key %%q".format(this.key)""".format(this.concept)
+  
+    root.branch.result_map = """meta err_code = meta("err_code")
+  meta err_msg = meta("err_msg")
+  %s""".format(this.result_map).trim()
+  }
+  
+  map map_error {
+    root.mapping = """root = if meta("err_code") != null {
+    throw("%s: %s".format(@err_code, @err_msg))
+  } else {
+    this
+  }"""
+  }
+  
+  root.for_each = [
+    this.apply("map_branch"),
+    this.apply("map_error")
+  ]
+
+
 
 tests:
   - name: Should use configured fields
     config:
       redis: redis://my-other-redis-server:6379
-      scope: "exact"
-      concept: "account"
-      key: "this.AccountId"
+      key: this.code
+      scope: exact
+      concept: year
+      result_map: |-
+        root.year = this
     expected:
-      branch:
-        request_map: |-
-          root = if this.AccountId.or("").string().trim().length() == 0 { 
-            deleted() 
-          } else { 
-            {"key": this.AccountId} 
-          }
-        processors:
-          - try:
-              - label: "check_account_dependency"
-                redis:
-                  url: redis://my-other-redis-server:6379
-                  command: get
-                  args_mapping: |-
-                    root = [ "exact:dependencies:account:%s".format(this.key.escape_url_query()) ]
-                  retries: 0
+      for_each:
+        - branch:
+            request_map: |-
+              root = if this.code.or("").string().trim().length() == 0 { 
+                deleted() 
+              } else { 
+                {"key": this.code} 
+              }
+            processors:
+              - try:
+                  - redis:
+                      url: redis://my-other-redis-server:6379
+                      command: get
+                      args_mapping: |-
+                        root = [ "exact:year:%s".format(this.key.escape_url_query()) ]
+                      retries: 0
+                  - mapping: root = this.parse_json()
 
-          - catch:
-              - mapping: |-
-                  meta err_code = "DEPENDENCY_NOT_FOUND"
-                  meta err_msg = "no account found with key %q".format(this.key)
-                  root = throw("%s: %s".format(@err_code, @err_msg))
+              - catch:
+                  - mapping: |-
+                      meta err_code = "DEPENDENCY_NOT_FOUND"
+                      meta err_msg = "no year found with key %q".format(this.key)
 
-  - name: Should fall back to environment vars when config not specified
+            result_map: |-
+              meta err_code = meta("err_code")
+              meta err_msg = meta("err_msg")
+              root.year = this
+
+        - mapping: |-
+            root = if meta("err_code") != null {
+              throw("%s: %s".format(@err_code, @err_msg))
+            } else {
+              this
+            }
+
+  - name: Should fall back to environment variables if config not defined
     config:
-      concept: "account"
-      key: "this.AccountId"
+      key: this.code
+      concept: year
     expected:
-      branch:
-        request_map: |-
-          root = if this.AccountId.or("").string().trim().length() == 0 { 
-            deleted() 
-          } else { 
-            {"key": this.AccountId} 
-          }
-        processors:
-          - try:
-              - label: "check_account_dependency"
-                redis:
-                  url: redis://my-redis-server:6379
-                  command: get
-                  args_mapping: |-
-                    root = [ "my-scope:dependencies:account:%s".format(this.key.escape_url_query()) ]
-                  retries: 0
+      for_each:
+        - branch:
+            request_map: |-
+              root = if this.code.or("").string().trim().length() == 0 { 
+                deleted() 
+              } else { 
+                {"key": this.code} 
+              }
+            processors:
+              - try:
+                  - redis:
+                      url: redis://my-redis-server:6379
+                      command: get
+                      args_mapping: |-
+                        root = [ "my-scope:year:%s".format(this.key.escape_url_query()) ]
+                      retries: 0
+                  - mapping: root = this.parse_json()
 
-          - catch:
-              - mapping: |-
-                  meta err_code = "DEPENDENCY_NOT_FOUND"
-                  meta err_msg = "no account found with key %q".format(this.key)
-                  root = throw("%s: %s".format(@err_code, @err_msg))
+              - catch:
+                  - mapping: |-
+                      meta err_code = "DEPENDENCY_NOT_FOUND"
+                      meta err_msg = "no year found with key %q".format(this.key)
+            result_map: |-
+              meta err_code = meta("err_code")
+              meta err_msg = meta("err_msg")
+        - mapping: |-
+            root = if meta("err_code") != null {
+              throw("%s: %s".format(@err_code, @err_msg))
+            } else {
+              this
+            }
+
+  - name: Should apply mock
+    config:
+      key: this.code
+      concept: year
+      mock_redis: |-
+        root = throw("ERR: key not found")
+    expected:
+      for_each:
+        - branch:
+            request_map: |-
+              root = if this.code.or("").string().trim().length() == 0 { 
+                deleted() 
+              } else { 
+                {"key": this.code} 
+              }
+            processors:
+              - try:
+                  - mapping: |-
+                      root = throw("ERR: key not found")
+                  - mapping: root = this.parse_json()
+
+              - catch:
+                  - mapping: |-
+                      meta err_code = "DEPENDENCY_NOT_FOUND"
+                      meta err_msg = "no year found with key %q".format(this.key)
+            result_map: |-
+              meta err_code = meta("err_code")
+              meta err_msg = meta("err_msg")
+        - mapping: |-
+            root = if meta("err_code") != null {
+              throw("%s: %s".format(@err_code, @err_msg))
+            } else {
+              this
+            }

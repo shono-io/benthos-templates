@@ -1,0 +1,57 @@
+input:
+  stdin: {}
+
+pipeline:
+  processors:
+    - label: lookup
+      depend_on:
+        concept: year
+        key: this.code
+        result_map: |-
+          root = this
+          root.code = this.key
+          root.name = this.value
+
+output:
+  stdout: {}
+
+tests:
+  - name: Should throw an error and set headers if a key is not found
+    mocks:
+      lookup:
+        depend_on:
+          concept: year
+          key: this.code
+          mock_redis: |-
+            root = throw("ERR: key not found")
+          result_map: |-
+            root.resolved = this
+    input_batch:
+      - json_content:
+          code: "1234"
+    output_batches:
+      - - metadata_equals:
+            err_msg:  no year found with key "1234"
+            err_code: "DEPENDENCY_NOT_FOUND"
+          bloblang: errored()
+
+  - name: Should apply mapping if record was found
+    mocks:
+      lookup:
+        depend_on:
+          concept: year
+          key: this.code
+          mock_redis: |-
+            root = """{"key": "1234", "value": "2019"}"""
+          result_map: |-
+            root.resolved = this
+    input_batch:
+      - json_content:
+          code: "1234"
+    output_batches:
+      - - bloblang: ! errored()
+          json_equals:
+            code: "1234"
+            resolved:
+              key: "1234"
+              value: "2019"
