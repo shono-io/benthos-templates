@@ -1,0 +1,46 @@
+input:
+  generate:
+    count: 1
+    mapping: |-
+      meta err_code = "DEPENDENCY_NOT_FOUND"
+      meta err_msg = "no account found with key %q".format("bla")
+      
+      root = throw("error")
+
+
+output:
+  switch:
+    cases:
+      - check: errored() && meta("err_code") != "DEPENDENCY_NOT_FOUND"
+        output:
+          broker:
+            pattern: fan_out
+            outputs:
+              - label: dlq
+                stdout: {}
+                processors:
+                  - mapping: |-
+                      root.app = "my-app"
+                      root.error = error()
+                      root.code = @err_code
+                      root.meta = @ 
+                      root.payload = this
+                  - metric:
+                      type: counter
+                      name: "death_letter_sent"
+                      labels:
+                        app: "my-app"
+                        code: ${! meta("err_code").or("GENERIC_ERROR") }
+                  - log:
+                      level: WARN
+                      message: "sending error to DLQ: ${!error()}"
+              - label: reject
+                reject: "Unable to process message: ${! error() }"
+      - check: errored() && meta("err_code") == "DEPENDENCY_NOT_FOUND"
+        output:
+          label: dependency_not_found
+          reject: "${! meta(\"err_msg\") }; rejecting to retry later"
+
+      - output:
+          label: output
+          stdout: { }
