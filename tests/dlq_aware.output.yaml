@@ -4,8 +4,16 @@ input:
     mapping: |-
       meta err_code = "DEPENDENCY_NOT_FOUND"
       meta err_msg = "no account found with key %q".format("bla")
-      
-      root = throw("error")
+      root = {}
+
+pipeline:
+  processors:
+    - mapping: |-
+        root = if meta("err_code") != null {
+          throw("%s: %s".format(meta("err_code"), meta("err_msg")))
+        } else {
+          this
+        }
 
 
 output:
@@ -20,7 +28,7 @@ output:
                 stdout: {}
                 processors:
                   - mapping: |-
-                      root.app = "my-app"
+                      root.app = "my-app" 
                       root.error = error()
                       root.code = @err_code
                       root.meta = @ 
