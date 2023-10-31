@@ -63,8 +63,8 @@ mapping: |-
   }
   
   map map_error {
-    root.mapping = """root = if meta("err_code") != null {
-    throw("%s: %s".format(meta("err_code"), meta("err_msg")))
+    root.mapping = """root = if @err_code != null {
+    throw("%s: %s".format(@err_code, @err_msg))
   } else {
     this
   }"""
@@ -116,8 +116,8 @@ tests:
               root.year = this
 
         - mapping: |-
-            root = if meta("err_code") != null {
-              throw("%s: %s".format(meta("err_code"), meta("err_msg")))
+            root = if @err_code != null {
+              throw("%s: %s".format(@err_code, @err_msg))
             } else {
               this
             }
@@ -153,8 +153,8 @@ tests:
               meta err_code = meta("err_code")
               meta err_msg = meta("err_msg")
         - mapping: |-
-            root = if meta("err_code") != null {
-              throw("%s: %s".format(meta("err_code"), meta("err_msg")))
+            root = if @err_code != null {
+              throw("%s: %s".format(@err_code, @err_msg))
             } else {
               this
             }
@@ -188,8 +188,8 @@ tests:
               meta err_code = meta("err_code")
               meta err_msg = meta("err_msg")
         - mapping: |-
-            root = if meta("err_code") != null {
-              throw("%s: %s".format(meta("err_code"), meta("err_msg")))
+            root = if @err_code != null {
+              throw("%s: %s".format(@err_code, @err_msg))
             } else {
               this
             }
