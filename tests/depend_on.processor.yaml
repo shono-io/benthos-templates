@@ -12,6 +12,9 @@ pipeline:
           root.code = this.key
           root.name = this.value
 
+    - log:
+        message: "meta: ${!meta()}"
+
 output:
   stdout: {}
 
@@ -49,7 +52,10 @@ tests:
       - json_content:
           code: "1234"
     output_batches:
-      - - bloblang: ! errored()
+      - - bloblang: '!errored()'
+          metadata_equals:
+            err_code: null
+            err_msg: null
           json_equals:
             code: "1234"
             resolved:

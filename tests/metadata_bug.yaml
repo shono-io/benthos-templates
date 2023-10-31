@@ -1,0 +1,37 @@
+input:
+  generate:
+    count: 1
+    mapping: root = {}
+
+pipeline:
+  processors:
+    - mapping: |-
+        meta outside = "outside"
+        root = content()
+
+    - branch:
+        processors:
+          - mapping: |-
+              meta inside = "inside"
+              meta nulled = null
+              root = content()
+        result_map: |-
+          meta inside = meta("inside")
+          meta nulled = meta("nulled")
+          root = content()
+
+output:
+  stdout: {}
+
+tests:
+  - name: inside_outside
+    input_batch:
+      - metadata:
+          external: "external"
+        content: "hello world"
+    output_batches:
+      - - metadata_equals:
+            nulled: "null"
+            inside: "inside"
+            outside: "outside"
+            external: "external"

@@ -1,0 +1,50 @@
+input:
+  generate:
+    count: 1
+    mapping: root.code = "world"
+
+  processors:
+#    - for_each:
+#      - branch:
+#          request_map: |-
+#            root = if this.code.or("").string().trim().length() == 0 {
+#              deleted()
+#            } else {
+#              {"key": this.code}
+#            }
+#          processors:
+#            - try:
+#                - mapping: |-
+#                    root = throw("ERR: key not found")
+#                - mapping: root = this.parse_json()
+#
+#            - catch:
+#                - mapping: |-
+#                    meta err_code = "DEPENDENCY_NOT_FOUND"
+#                    meta err_msg = "no year found with key %q".format(this.key)
+#          result_map: |-
+#            meta err_code = if meta("err_code") == "null" { deleted() } else { meta("err_code") }
+#            meta err_msg = if meta("err_msg") == "null" { deleted() } else { meta("err_msg") }
+#      - mapping: |-
+#          root = if @err_code != null {
+#            throw("%s: %s".format(@err_code, @err_msg))
+#          } else {
+#            this
+#          }
+
+      - depend_on:
+          concept: year
+          key: this.code
+          mock_redis: |-
+            root = """{"key": "1234", "value": "2019"}"""
+          result_map: |-
+            root.resolved = this
+
+output:
+  stdout: {}
+  processors:
+    - mapping: |-
+        root.meta = meta()
+        root.root = this
+        root.error = error()
+        root.errored = errored()
