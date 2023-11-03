@@ -37,6 +37,10 @@ fields:
     type: string
     default: 1s
 
+  - name: start_from_oldest
+    type: bool
+    default: true
+
 mapping: |-
   let brokers = if this.brokers.or([]).length() == 0 { env("BACKBONE_KAFKA_URL").or("").split(",") } else { this.brokers }
   let username = if this.username == "" { env("BACKBONE_KAFKA_USERNAME") } else { this.username }
@@ -56,6 +60,7 @@ mapping: |-
   root.kafka_franz.topics = this.scopes
   root.kafka_franz.batching.count = this.batch_count
   root.kafka_franz.batching.period = this.batch_period
+  root.kafka_franz.start_from_oldest = this.start_from_oldest
 
 tests:
   - name: Should use configured fields
@@ -79,6 +84,7 @@ tests:
         tls:
           enabled: true
         consumer_group: people_injector
+        start_from_oldest: true
         topics:
           - hr
           - iam
@@ -102,6 +108,7 @@ tests:
         tls:
           enabled: true
         consumer_group: my-app
+        start_from_oldest: true
         topics:
           - hr
           - iam

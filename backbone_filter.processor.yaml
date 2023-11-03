@@ -8,16 +8,21 @@ fields:
     type: string
     description: the events to listen for in the format <scope>:<concept>:<event>
 
+  - name: namespace
+    type: string
+    default: "io.shono"
+    description: the namespace to use for the metadata
+
 mapping: |-
   map filter {
     root.mapping = """
     let events = %s
     let evt = if content().length() != 0 {
-      "%%s:%%s:%%s".format(meta("io.shono.scope"), meta("io.shono.concept"), meta("io.shono.event"))
+      "%%s:%%s:%%s".format(meta("%[2]s.scope"), meta("%[2]s.concept"), meta("%[2]s.event"))
     } else {
       "unknown"
     }
-    root = if $events.contains($evt) { this } else { deleted() }""".format(this.events.format_json(no_indent: true))
+    root = if $events.contains($evt) { this } else { deleted() }""".format(this.events.format_json(no_indent: true), this.namespace)
   }
 
   map metric_processing {
@@ -25,9 +30,9 @@ mapping: |-
     root.metric.name = "io_shono_processing"
     root.metric.labels.app = "${APP_ID}"
     root.metric.labels.kind = "event"
-    root.metric.labels.scope = "${!meta(\"io.shono.scope\")}"
-    root.metric.labels.concept = "${!meta(\"io.shono.concept\")}"
-    root.metric.labels.event = "${!meta(\"io.shono.event\")}"
+    root.metric.labels.scope = "${!meta(\"%s.scope\")}".format(this.namespace)
+    root.metric.labels.concept = "${!meta(\"%s.concept\")}".format(this.namespace)
+    root.metric.labels.event = "${!meta(\"%s.event\")}".format(this.namespace)
   }
 
   root.try = [
@@ -35,7 +40,7 @@ mapping: |-
     this.apply("metric_processing")
   ]
 tests:
-  - name: Test With Kafka
+  - name: Should render template
     config:
       events:
         - hr:people:created
@@ -61,3 +66,31 @@ tests:
                 scope: "${!meta(\"io.shono.scope\")}"
                 concept: "${!meta(\"io.shono.concept\")}"
                 event: "${!meta(\"io.shono.event\")}"
+
+  - name: Should render template with custom namespace
+    config:
+      namespace: com.brimit
+      events:
+        - hr:people:created
+        - hr:people:updated
+        - iam:user:authenticated
+    expected:
+      try:
+        - mapping: |-
+            let events = ["hr:people:created","hr:people:updated","iam:user:authenticated"]
+            let evt = if content().length() != 0 {
+              "%s:%s:%s".format(meta("com.brimit.scope"), meta("com.brimit.concept"), meta("com.brimit.event"))
+            } else {
+              "unknown"
+            }
+            root = if $events.contains($evt) { this } else { deleted() }
+
+        - metric:
+            type: counter
+            name: "io_shono_processing"
+            labels:
+              app: "${APP_ID}"
+              kind: "event"
+              scope: "${!meta(\"com.brimit.scope\")}"
+              concept: "${!meta(\"com.brimit.concept\")}"
+              event: "${!meta(\"com.brimit.event\")}"

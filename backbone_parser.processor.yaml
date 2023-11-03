@@ -7,6 +7,7 @@ fields: []
 mapping: |-
   root.mapping = """
   meta "io.shono.key" = @kafka_key
+  meta key = @kafka_key
   meta timestamp = @kafka_timestamp_unix
   meta offset = @kafka_offset
   meta partition = @kafka_partition
@@ -18,6 +19,7 @@ tests:
     expected:
       mapping: |-
         meta "io.shono.key" = @kafka_key
+        meta key = @kafka_key
         meta timestamp = @kafka_timestamp_unix
         meta offset = @kafka_offset
         meta partition = @kafka_partition
