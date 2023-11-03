@@ -1,0 +1,83 @@
+name: download_dataset
+type: processor
+status: beta
+
+fields:
+  - name: cache
+    type: string
+    description: the cache to use to perform the lookup
+  - name: url
+    type: string
+    default: "this.url"
+    description: the dot path to the field holding the url
+
+mapping: |-
+  root.branch.request_map = """let parts = %[1]s.split("/")
+  meta url = %[1]s
+  meta key = $parts.index($parts.length() - 1)""".format(this.url)
+  root.branch.processors = []
+  root.branch.processors."-".try = []
+  root.branch.processors."0".try."-".cache.resource = this.cache
+  root.branch.processors."0".try."0".cache.operator = "get"
+  root.branch.processors."0".try."0".cache.key = "${!meta(\"key\")}"
+  root.branch.processors."0".try."-".mapping = "root.is_cached = true\nroot.cached = content()"
+
+  root.branch.processors."-".catch = []
+  root.branch.processors."1".catch."-".log.message = "url ${!meta(\"url\")} not found in cache; downloading"
+  root.branch.processors."1".catch."-".branch.result_map = "root.is_cached = false\nroot.cached = content()"
+  root.branch.processors."1".catch."1".branch.processors = []
+  root.branch.processors."1".catch."1".branch.processors."-".http.url = "${!meta(\"url\")}"
+  root.branch.processors."1".catch."1".branch.processors."0".http.verb = "GET"
+  root.branch.processors."1".catch."1".branch.processors."0".http.timeout = "3600s"
+
+  root.branch.processors."1".catch."-".cache.resource = "downloaded_files"
+  root.branch.processors."1".catch."2".cache.operator = "set"
+  root.branch.processors."1".catch."2".cache.key = "${!meta(\"key\")}"
+  root.branch.processors."1".catch."2".cache.value = "${!this.cached}"
+  
+  root.branch.result_map = "meta is_cached = this.is_cached\nroot = this.cached"
+  
+
+tests:
+  - name: Test With Kafka
+    config:
+      cache: downloaded_files
+      url: this.url
+    expected:
+      branch:
+        request_map: |-
+          let parts = this.url.split("/")
+          meta url = this.url
+          meta key = $parts.index($parts.length() - 1)
+        processors:
+          - try:
+              - cache:
+                  resource: downloaded_files
+                  operator: get
+                  key: ${!meta("key")}
+              - mapping: |-
+                  root.is_cached = true
+                  root.cached = content()
+          - catch:
+              - log:
+                  message: "url ${!meta(\"url\")} not found in cache; downloading"
+
+              - branch:
+                  processors:
+                    - http:
+                        url: "${!meta(\"url\")}"
+                        verb: GET
+                        timeout: 3600s
+                  result_map: |-
+                    root.is_cached = false
+                    root.cached = content()
+
+              - cache:
+                  resource: downloaded_files
+                  operator: set
+                  key: ${!meta("key")}
+                  value: ${!this.cached}
+
+        result_map: |-
+          meta is_cached = this.is_cached
+          root = this.cached

@@ -1,0 +1,75 @@
+name: elastic_output
+type: output
+status: beta
+
+fields:
+  - name: index
+    type: string
+    description: the index to write to
+  - name: key
+    type: string
+    description: the dot path to the field to use as the document id
+
+  - name: urls
+    type: string
+    kind: list
+    default: []
+    description: the elastic endpoint to use
+  - name: username
+    type: string
+    default: ""
+    description: the username to use for basic auth
+  - name: password
+    type: string
+    default: ""
+    description: the password to use for basic auth
+
+mapping: |-
+  map elastic {
+    root.elasticsearch.urls = if this.urls.length() == 0 { env("ELASTICSEARCH_URLS").split(",") } else { this.urls }
+    root.elasticsearch.basic_auth.enabled = true
+    root.elasticsearch.basic_auth.username = if this.username == "" { env("ELASTICSEARCH_USERNAME") } else { this.username }
+    root.elasticsearch.basic_auth.password = if this.password == "" { env("ELASTICSEARCH_PASSWORD") } else { this.password }
+    
+    root.elasticsearch.tls.enabled = true
+    root.elasticsearch.index = this.index
+    root.elasticsearch.id = "${! %s }".format(this.key)
+    root.elasticsearch.action = "upsert"
+    root.elasticsearch.sniff = false
+  
+    root.elasticsearch.batching.period = "30s"
+  }
+  
+  root.switch.cases = []
+  root.switch.cases."-".check = "errored()"
+  root.switch.cases.0.output.reject = "processing failed due to: ${! error() }"
+  root.switch.cases."-".output = this.apply("elastic")
+
+tests:
+  - name: Test With Kafka
+    config:
+      index: companies
+      key: this.id
+    expected:
+      switch:
+        cases:
+          - check: "errored()"
+            output:
+              reject: "processing failed due to: ${! error() }"
+
+          - output:
+              elasticsearch:
+                batching:
+                  period: 30s
+                urls:
+                  - http://my-elasticsearch:9200
+                basic_auth:
+                  enabled: true
+                  username: elasticsearch_username
+                  password: elasticsearch_password
+                tls:
+                  enabled: true
+                sniff: false
+                index: companies
+                id: "${! this.id }"
+                action: upsert

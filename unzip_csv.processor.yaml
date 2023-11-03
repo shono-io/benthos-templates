@@ -1,0 +1,44 @@
+name: unzip_csv
+type: processor
+status: beta
+
+fields:
+  - name: batch_size
+    type: int
+    default: 100
+    description: the number of rows to include in each batch
+
+mapping: |-
+  root.for_each = []
+  root.for_each."-".unarchive.format = "zip"
+  root.for_each."-".mapping = """meta header = content().slice(0, content().index_of("\n"))
+  root = content().split("\n").slice(1)"""
+  root.for_each."-".unarchive.format = "json_array"
+  root.for_each."-".split.size = this.batch_size
+#  root.try."-".parallel.cap = 10
+#  root.try."4".parallel.processors = []
+#  root.try."4".parallel.processors."-".mapping = """root = [@header, content().unquote().decode("base64")].join("\n").parse_csv()"""
+#  root.try."4".parallel.processors."-".unarchive.format = "json_array"
+
+tests:
+  - name: Test With Kafka
+    config:
+      batch_size: 100
+    expected:
+      for_each:
+        - unarchive:
+            format: 'zip'
+        - mapping: |-
+            meta header = content().slice(0, content().index_of("\n"))
+            root = content().split("\n").slice(1)
+        - unarchive:
+            format: json_array
+        - split:
+            size: 100
+#        - parallel:
+#            cap: 10
+#            processors:
+#              - mapping: |-
+#                  root = [@header, content().unquote().decode("base64")].join("\n").parse_csv()
+#              - unarchive:
+#                  format: json_array
