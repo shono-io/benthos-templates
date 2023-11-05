@@ -16,7 +16,7 @@ fields:
   - name: brokers
     kind: list
     type: string
-    default: ""
+    default: []
     description: the kafka brokers to connect to
 
   - name: username

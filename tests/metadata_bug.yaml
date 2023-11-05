@@ -16,8 +16,8 @@ pipeline:
               meta nulled = null
               root = content()
         result_map: |-
-          meta inside = meta("inside")
-          meta nulled = meta("nulled")
+          meta inside = @inside
+          meta nulled = @nulled
           root = content()
 
 output:
@@ -31,7 +31,7 @@ tests:
         content: "hello world"
     output_batches:
       - - metadata_equals:
-            nulled: "null"
+            nulled: null
             inside: "inside"
             outside: "outside"
             external: "external"
