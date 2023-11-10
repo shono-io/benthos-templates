@@ -3,38 +3,38 @@ input:
     count: 1
     mapping: |-
       root = {
-        "BillingCity": "Brakel",
+        "BillingCity": "Local",
         "BillingCountry": "BE ",
         "BillingPostalCode": null,
         "BillingState": "O-V",
-        "BillingStreet": "Valkenbergstraat 27",
+        "BillingStreet": "DataStreet 27",
         "Description": "",
         "LIC_BestRating__c": null,
-        "LIC_BillingEmail__c": "els.haesebroek@icloud.com",
+        "LIC_BillingEmail__c": "abc@icloud.com",
         "LIC_Classification__c": null,
         "LIC_ConsumerStartDate__c": "2019-12-31T16:12:32.256Z",
         "LIC_CreditLimitAmount__c": 315.0,
-        "LIC_Email__c": "els.haesebroek@icloud.com",
+        "LIC_Email__c": "abc@icloud.com",
         "LIC_InternalCustomerCode__c": "20100022450",
         "LIC_InternalCustomerID__c": "4AE9B897-692B-4F27-A815-9AEC214241FF",
         "LIC_PaymentTerms__c": "33",
         "LIC_Status__c": "Customer",
         "LIC_VATLiable__c": "L",
-        "LIC_VATNumber__c": "BE0810569909",
-        "Name": "Esme-shop",
+        "LIC_VATNumber__c": "BE0000569000",
+        "Name": "MyShop",
         "Owner": {
           "EmployeeNumber": 55
         },
-        "Phone": "0475 267624",
+        "Phone": "0475 XXXXXX",
         "Rating": 3,
         "RecordType": {
           "Name": "B2B"
         },
-        "ShippingCity": "Brakel",
+        "ShippingCity": "Local",
         "ShippingCountry": "BE ",
         "ShippingPostalCode": null,
         "ShippingState": "O-V",
-        "ShippingStreet": "Valkenbergstraat 27",
+        "ShippingStreet": "DataStreet 27",
         "Type": "G",
         "Website": ""
       }
