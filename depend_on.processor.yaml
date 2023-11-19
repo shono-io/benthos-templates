@@ -46,7 +46,7 @@ mapping: |-
     root.branch.request_map = """root = if %[1]s.or("").string().trim().length() == 0 { 
     deleted() 
   } else { 
-    {"key": %[1]s} 
+    {"key": %[1]s.string()} 
   }""".format(this.key)
     root.branch.processors = []
     root.branch.processors."-".try = []
@@ -93,7 +93,7 @@ tests:
               root = if this.code.or("").string().trim().length() == 0 { 
                 deleted() 
               } else { 
-                {"key": this.code} 
+                {"key": this.code.string()} 
               }
             processors:
               - try:
@@ -133,7 +133,7 @@ tests:
               root = if this.code.or("").string().trim().length() == 0 { 
                 deleted() 
               } else { 
-                {"key": this.code} 
+                {"key": this.code.string()} 
               }
             processors:
               - try:
@@ -172,7 +172,7 @@ tests:
               root = if this.code.or("").string().trim().length() == 0 { 
                 deleted() 
               } else { 
-                {"key": this.code} 
+                {"key": this.code.string()} 
               }
             processors:
               - try:
