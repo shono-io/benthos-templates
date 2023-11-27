@@ -1,0 +1,53 @@
+name: sanitize
+type: processor
+status: beta
+fields:
+  - name: data
+    type: string
+    default: this
+    description: the dot path to the data to sanitize
+
+mapping: |-
+  root.mapping = """map map_value {
+    root = match {
+      this.type() == "string" => if this.trim() == "" { deleted() } else { this.trim() }
+      this.type() == "array" => this.map_each(i -> i.apply("map_value"))
+      this.type() == "object" => this.key_values().map_each(i -> {i.key: i.value.apply("map_value")}).squash()
+      this.type() == "null" => deleted()
+      _ => this
+    }
+  }
+  root = %s.apply("map_value")""".format(this.data)
+
+tests:
+  - name: Should use configured fields
+    config:
+      data: this.my_field
+    expected:
+      mapping: |-
+        map map_value {
+          root = match {
+            this.type() == "string" => if this.trim() == "" { deleted() } else { this.trim() }
+            this.type() == "array" => this.map_each(i -> i.apply("map_value"))
+            this.type() == "object" => this.key_values().map_each(i -> {i.key: i.value.apply("map_value")}).squash()
+            this.type() == "null" => deleted()
+            _ => this
+          }
+        }
+        root = this.my_field.apply("map_value")
+
+  - name: Should use config defaults
+    config: {}
+    expected:
+      mapping: |-
+        map map_value {
+          root = match {
+            this.type() == "string" => if this.trim() == "" { deleted() } else { this.trim() }
+            this.type() == "array" => this.map_each(i -> i.apply("map_value"))
+            this.type() == "object" => this.key_values().map_each(i -> {i.key: i.value.apply("map_value")}).squash()
+            this.type() == "null" => deleted()
+            _ => this
+          }
+        }
+        root = this.apply("map_value")
+

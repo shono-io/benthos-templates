@@ -31,7 +31,7 @@ mapping: |-
     root.redis.url = $redis
     root.redis.command = "set"
     root.redis.args_mapping = """root = [
-    "%s:%s:%%s".format(%s.escape_url_query()),
+    "%s:%s:%%s".format(%s.string().trim().escape_url_query()),
     this.format_json()
   ]""".format($scope, this.concept, this.key)
   }
@@ -59,7 +59,7 @@ tests:
                 command: set
                 args_mapping: |-
                   root = [
-                    "my-scope:appellation:%s".format(this.code.escape_url_query()),
+                    "my-scope:appellation:%s".format(this.code.string().trim().escape_url_query()),
                     this.format_json()
                   ]
 
@@ -96,7 +96,7 @@ tests:
                   command: set
                   args_mapping: |-
                     root = [
-                      "my-other-scope:appellation:%s".format(this.code.escape_url_query()),
+                      "my-other-scope:appellation:%s".format(this.code.string().trim().escape_url_query()),
                       this.format_json()
                     ]
 
