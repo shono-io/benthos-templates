@@ -26,10 +26,10 @@ fields:
 
 mapping: |-
   map elastic {
-    root.elasticsearch.urls = if this.urls.length() == 0 { env("ELASTICSEARCH_URLS").split(",") } else { this.urls }
+    root.elasticsearch.urls = if this.urls.length() == 0 { env("ELASTIC_ENDPOINT").split(",") } else { this.urls }
     root.elasticsearch.basic_auth.enabled = true
-    root.elasticsearch.basic_auth.username = if this.username == "" { env("ELASTICSEARCH_USERNAME") } else { this.username }
-    root.elasticsearch.basic_auth.password = if this.password == "" { env("ELASTICSEARCH_PASSWORD") } else { this.password }
+    root.elasticsearch.basic_auth.username = if this.username == "" { env("ELASTIC_USERNAME") } else { this.username }
+    root.elasticsearch.basic_auth.password = if this.password == "" { env("ELASTIC_PASSWORD") } else { this.password }
     
     root.elasticsearch.tls.enabled = true
     root.elasticsearch.index = this.index
@@ -38,38 +38,36 @@ mapping: |-
     root.elasticsearch.sniff = false
   
     root.elasticsearch.batching.period = "30s"
+    root.elasticsearch.batching.byte_size = 10485760
+    root.elasticsearch.batching.count = 100
   }
   
-  root.switch.cases = []
-  root.switch.cases."-".check = "errored()"
-  root.switch.cases.0.output.reject = "processing failed due to: ${! error() }"
-  root.switch.cases."-".output = this.apply("elastic")
+  root = this.apply("elastic")
 
 tests:
   - name: Test With Kafka
     config:
       index: companies
       key: this.id
+      urls:
+        - http://my-elasticsearch:9200
+      username: elasticsearch_username
+      password: elasticsearch_password
     expected:
-      switch:
-        cases:
-          - check: "errored()"
-            output:
-              reject: "processing failed due to: ${! error() }"
-
-          - output:
-              elasticsearch:
-                batching:
-                  period: 30s
-                urls:
-                  - http://my-elasticsearch:9200
-                basic_auth:
-                  enabled: true
-                  username: elasticsearch_username
-                  password: elasticsearch_password
-                tls:
-                  enabled: true
-                sniff: false
-                index: companies
-                id: "${! this.id }"
-                action: upsert
+       elasticsearch:
+        batching:
+          count: 100
+          byte_size: 10485760
+          period: 30s
+        urls:
+          - http://my-elasticsearch:9200
+        basic_auth:
+          enabled: true
+          username: elasticsearch_username
+          password: elasticsearch_password
+        tls:
+          enabled: true
+        sniff: false
+        index: companies
+        id: "${! this.id }"
+        action: upsert

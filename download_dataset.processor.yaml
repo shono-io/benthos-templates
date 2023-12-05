@@ -23,10 +23,10 @@ mapping: |-
   root.branch.processors."0".try."-".mapping = "root.is_cached = true\nroot.cached = content()"
 
   root.branch.processors."-".catch = []
-  root.branch.processors."1".catch."-".log.message = "url ${!meta(\"url\")} not found in cache; downloading"
+  root.branch.processors."1".catch."-".log.message = "url ${!meta(\"key\")} not found in cache; downloading"
   root.branch.processors."1".catch."-".branch.result_map = "root.is_cached = false\nroot.cached = content()"
   root.branch.processors."1".catch."1".branch.processors = []
-  root.branch.processors."1".catch."1".branch.processors."-".http.url = "${!meta(\"url\")}"
+  root.branch.processors."1".catch."1".branch.processors."-".http.url = "${!meta(\"key\")}"
   root.branch.processors."1".catch."1".branch.processors."0".http.verb = "GET"
   root.branch.processors."1".catch."1".branch.processors."0".http.timeout = "3600s"
 
@@ -35,7 +35,9 @@ mapping: |-
   root.branch.processors."1".catch."2".cache.key = "${!meta(\"key\")}"
   root.branch.processors."1".catch."2".cache.value = "${!this.cached}"
   
-  root.branch.result_map = "meta is_cached = this.is_cached\nroot = this.cached"
+  root.branch.result_map = """meta is_cached = this.is_cached
+  meta downloaded_filename = meta("key")
+  root = this.cached"""
   
 
 tests:
@@ -60,12 +62,12 @@ tests:
                   root.cached = content()
           - catch:
               - log:
-                  message: "url ${!meta(\"url\")} not found in cache; downloading"
+                  message: "url ${!meta(\"key\")} not found in cache; downloading"
 
               - branch:
                   processors:
                     - http:
-                        url: "${!meta(\"url\")}"
+                        url: "${!meta(\"key\")}"
                         verb: GET
                         timeout: 3600s
                   result_map: |-
@@ -80,4 +82,5 @@ tests:
 
         result_map: |-
           meta is_cached = this.is_cached
+          meta downloaded_filename = meta("key")
           root = this.cached
