@@ -1,0 +1,80 @@
+name: ks_add
+type: processor
+status: beta
+description: add a value to the set at the given key in the given concept
+
+fields:
+  - name: concept
+    type: string
+    description: the concept
+  - name: key
+    type: string
+    description: the dot path to the field containing the key
+
+  - name: redis
+    type: string
+    default: ""
+    description: the redis url to use. Defaults to the application defined redis instance
+  - name: scope
+    type: string
+    default: ""
+    description: the scope in which to store the value. Defaults to the application scope
+
+mapping: |-
+  let appId = env("APP_ID")
+  let scope = if this.scope == "" { env("APP_SCOPE") } else { this.scope }
+  
+  map kv_add {
+    let redis = if this.redis == "" { env("REDIS_URL") } else { this.redis }
+    let scope = if this.scope == "" { env("APP_SCOPE") } else { this.scope }
+  
+    root.redis.url = $redis
+    root.redis.command = "sadd"
+    root.redis.args_mapping = """root = [
+    "%s:%s:%%s".format(%s.string().trim().escape_url_query()),
+    this.format_json()
+  ]""".format($scope, this.concept, this.key)
+  }
+  
+  root.branch.processors = []
+  root.branch.processors."-".try = [
+    this.apply("kv_add"),
+  ]
+
+
+tests:
+  - name: Should fall back to environment vars when config not specified
+    config:
+      key: this.code
+      concept: "appellation"
+    expected:
+      branch:
+        processors:
+          - try:
+            - redis:
+                url: redis://my-redis-server:6379
+                command: sadd
+                args_mapping: |-
+                  root = [
+                    "my-scope:appellation:%s".format(this.code.string().trim().escape_url_query()),
+                    this.format_json()
+                  ]
+
+  - name: Should define configured fields
+    config:
+      redis: redis://my-other-redis-server:6379
+      scope: "my-other-scope"
+      key: this.code
+      concept: "appellation"
+    expected:
+      branch:
+        processors:
+          - try:
+              - redis:
+                  url: redis://my-other-redis-server:6379
+                  command: sadd
+                  args_mapping: |-
+                    root = [
+                      "my-other-scope:appellation:%s".format(this.code.string().trim().escape_url_query()),
+                      this.format_json()
+                    ]

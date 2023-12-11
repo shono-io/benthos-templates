@@ -1,0 +1,121 @@
+name: ks_get
+type: processor
+status: beta
+description: get the members of a keyset
+
+fields:
+  - name: key
+    type: string
+    description: the dot path to the field containing the key
+  - name: concept
+    type: string
+    description: the concept
+
+  - name: result_map
+    type: string
+    default: "root = this.result"
+    description: the mapping to apply
+  - name: scope
+    type: string
+    default: ""
+    description: the scope from which the key needs to be retrieved
+  - name: redis
+    type: string
+    default: ""
+    description: the redis url to use
+
+
+mapping: |-
+  map ks_get {
+    let redis = if this.redis == "" { env("REDIS_URL") } else { this.redis }
+    let scope = if this.scope == "" { env("APP_SCOPE") } else { this.scope }
+  
+    root.redis.url = $redis
+    root.redis.command = "smembers"
+    root.redis.args_mapping = """root = [ "%s:%s:%%s".format(this.key.escape_url_query()) ]""".format($scope, this.concept)
+    root.redis.retries = 0
+  }
+  
+  root.branch.request_map = """root = if %[1]s.or("").string().trim().length() == 0 { 
+    deleted() 
+  } else { 
+    {"key": %[1]s.string().trim() } 
+  }""".format(this.key)
+  root.branch.processors = []
+  root.branch.processors."-".try = []
+  root.branch.processors."0".try."-" = this.apply("ks_get")
+  root.branch.processors."0".try."-".mapping = """root.result = this
+  root.found = true"""
+  
+  root.branch.processors."-".catch = []
+  root.branch.processors."1".catch."-".mapping = """root.result = []
+  root.found = false"""
+  
+  root.branch.result_map = this.result_map
+  
+
+tests:
+  - name: Should use configured fields
+    config:
+      redis: redis://my-other-redis-server:6379
+      key: this.code
+      scope: exact
+      concept: order_line
+      result_map: |-
+        root.lines = this.result
+    expected:
+      branch:
+        request_map: |-
+          root = if this.code.or("").string().trim().length() == 0 { 
+            deleted() 
+          } else { 
+            {"key": this.code.string().trim() } 
+          }
+        processors:
+          - try:
+            - redis:
+                url: redis://my-other-redis-server:6379
+                command: smembers
+                args_mapping: |-
+                  root = [ "exact:order_line:%s".format(this.key.escape_url_query()) ]
+                retries: 0
+            - mapping: |-
+                root.result = this
+                root.found = true
+
+          - catch:
+              - mapping: |-
+                  root.result = []
+                  root.found = false
+        result_map: |-
+          root.lines = this.result
+
+  - name: Should fall back to environment variables if config not defined
+    config:
+      key: this.code
+      concept: order_line
+    expected:
+      branch:
+        request_map: |-
+          root = if this.code.or("").string().trim().length() == 0 { 
+            deleted() 
+          } else { 
+            {"key": this.code.string().trim() } 
+          }
+        processors:
+          - try:
+              - redis:
+                  url: redis://my-redis-server:6379
+                  command: smembers
+                  args_mapping: |-
+                    root = [ "my-scope:order_line:%s".format(this.key.escape_url_query()) ]
+                  retries: 0
+              - mapping: |-
+                  root.result = this
+                  root.found = true
+
+          - catch:
+              - mapping: |-
+                  root.result = []
+                  root.found = false
+        result_map: root = this.result
